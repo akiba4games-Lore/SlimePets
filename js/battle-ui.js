@@ -12,7 +12,7 @@
 // a standalone demo pet + local screen toggling when it's missing, so this
 // screen still works in isolation (e.g. before game.js existed, or in tests).
 
-import { createBattle, legalActions, applyTurn } from './battle.js';
+import { createBattle, legalActions, applyTurn, typeMult } from './battle.js';
 import { generateWildOpponent, pickAction, randomGenome } from './battle-ai.js';
 import { createHost, createGuest, renderQR, startScanner } from './net.js';
 import { renderPet } from './render.js';
@@ -118,8 +118,27 @@ function ensureStyles() {
     .bui-rival-actions { display:flex; flex-direction:column; gap:6px; align-items:stretch; }
     .bui-rival-actions .bui-btn { padding:8px 14px; font-size:0.9rem; }
     .bui-rival-empty { text-align:center; color:#7a6a8a; padding:10px 0; }
+    .bui-element { font-size:0.82rem; font-weight:700; color:#6b5570; background:hsl(0 0% 100% / 0.65);
+      border-radius:10px; padding:2px 8px; }
+    .bui-move-btn { position:relative; display:flex; align-items:center; justify-content:center; gap:4px; }
+    .bui-cd-badge { position:absolute; top:-6px; right:-6px; background:hsl(0 0% 30%); color:#fff;
+      font-size:0.7rem; font-weight:800; border-radius:10px; padding:1px 6px; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+    .bui-confirm-overlay { position:absolute; inset:0; z-index:90; background:rgba(80,60,90,0.4);
+      display:flex; align-items:center; justify-content:center; padding:20px; }
+    .bui-confirm-card { width:100%; max-width:300px; background:linear-gradient(160deg,#fff5fb,#eef4ff);
+      border-radius:22px; box-shadow:0 12px 34px rgba(120,90,140,0.4); padding:18px 18px 14px;
+      display:flex; flex-direction:column; align-items:center; gap:6px; animation:bui-pop 0.25s ease; }
+    .bui-confirm-title { font-size:1.1rem; font-weight:800; color:#c05a8a; text-align:center; }
+    .bui-confirm-lines { display:flex; flex-direction:column; gap:4px; width:100%; margin:4px 0 8px; }
+    .bui-confirm-line { font-size:0.85rem; font-weight:700; color:#6b5570; text-align:center;
+      background:hsl(0 0% 100% / 0.7); border-radius:10px; padding:5px 10px; }
+    .bui-confirm-line.bui-eff-super { color:#c0392b; }
+    .bui-confirm-line.bui-eff-weak { color:#7a7a7a; }
+    .bui-confirm-actions { display:flex; gap:10px; width:100%; }
+    .bui-confirm-actions .bui-btn { flex:1; padding:12px; font-size:1rem; }
     @keyframes bui-shake { 0%,100%{transform:translateX(0);} 20%{transform:translateX(-6px);} 40%{transform:translateX(6px);} 60%{transform:translateX(-4px);} 80%{transform:translateX(4px);} }
     @keyframes bui-float { 0%{opacity:1; transform:translate(-50%,0);} 100%{opacity:0; transform:translate(-50%,-30px);} }
+    @keyframes bui-pop { 0%{transform:scale(0.85); opacity:0.4;} 60%{transform:scale(1.04);} 100%{transform:scale(1); opacity:1;} }
   `;
   document.head.appendChild(style);
 }
@@ -627,23 +646,95 @@ function runBattleScreen({ snapA, snapB, mySide, mode, engineSeed, net, bridge, 
   let animating = false;
   const pendingByTurn = {};
 
+  // Enable/disable the action buttons. When re-enabling, a button that is NOT
+  // usable this turn (on cooldown) stays disabled — its state is stamped in
+  // dataset.usable by renderActionButtons so a blanket re-enable can't override it.
   function setButtonsEnabled(enabled) {
-    actionsRow.querySelectorAll('button').forEach((b) => { b.disabled = !enabled; });
+    actionsRow.querySelectorAll('button').forEach((b) => {
+      b.disabled = enabled ? (b.dataset.usable === '0') : true;
+    });
   }
 
+  // v9/v10: render ALL of the player's EQUIPPED moves each turn (snap.moves is
+  // the <=4 equipped set). A move on cooldown is disabled with a ⏳N badge;
+  // priority>0 ("fast") moves get a ⚡. legalActions still governs usability.
   function renderActionButtons() {
     actionsRow.innerHTML = '';
-    let actions = [];
-    try {
-      actions = legalActions(state, mySide) || [];
-    } catch (err) {
-      console.error('[battle-ui] legalActions failed', err);
+    const cd = (state[mySide] && state[mySide].cd) || {};
+    let legal = [];
+    try { legal = legalActions(state, mySide) || []; } catch (err) { console.error('[battle-ui] legalActions failed', err); }
+    const legalSet = new Set(legal);
+    const moves = (mySnap && Array.isArray(mySnap.moves) && mySnap.moves.length) ? mySnap.moves : null;
+
+    if (moves) {
+      moves.forEach((mv) => {
+        const turnsLeft = cd[mv.id] || 0;
+        const usable = turnsLeft === 0 && legalSet.has(mv.id);
+        const icon = ELEMENT_ICON[mv.element] || ELEMENT_ICON.none;
+        let label = `${icon} ${mv.name || mv.id}`;
+        if ((mv.priority | 0) > 0) label += ' ⚡';
+        const btn = el('button', 'bui-btn bui-move-btn', label);
+        btn.dataset.usable = usable ? '1' : '0';
+        btn.disabled = !usable;
+        if (turnsLeft > 0) btn.appendChild(el('span', 'bui-cd-badge', `⏳${turnsLeft}`));
+        if (usable) btn.onclick = () => openMoveConfirm(mv);
+        actionsRow.appendChild(btn);
+      });
+      return;
     }
-    actions.forEach((a) => {
+
+    // Back-compat fallback (demo pet / old engine without a moves array):
+    // render whatever legalActions returns, all usable.
+    legal.forEach((a) => {
       const btn = el('button', 'bui-btn', actionLabel(a, mySnap));
+      btn.dataset.usable = '1';
       btn.onclick = () => handleLocalAction(a);
       actionsRow.appendChild(btn);
     });
+  }
+
+  // v8: tapping a move opens a confirm card (icon+name, element, power, cooldown,
+  // fast, effectiveness vs the opponent's element). Confirm commits the turn;
+  // Cancel returns to move selection (turn NOT spent). battle-ui owns this DOM.
+  function openMoveConfirm(mv) {
+    if (animating || !mv) return;
+    const oppEl = (oppSnap && (oppSnap.element || (oppSnap.genome && oppSnap.genome.element))) ||
+      (state[oppSide] && state[oppSide].element) || 'none';
+
+    const overlay = el('div', 'bui-confirm-overlay');
+    const card = el('div', 'bui-confirm-card');
+    const icon = ELEMENT_ICON[mv.element] || ELEMENT_ICON.none;
+    card.appendChild(el('div', 'bui-confirm-title', t('confirm.moveTitle', { move: `${icon} ${mv.name || mv.id}` })));
+
+    const lines = el('div', 'bui-confirm-lines');
+    const elKey = ELEMENT_ICON[mv.element] ? mv.element : 'none';
+    lines.appendChild(el('div', 'bui-confirm-line', `${ELEMENT_ICON[elKey]} ${t('element.' + elKey)}`));
+    lines.appendChild(el('div', 'bui-confirm-line', t('confirm.power', { power: (typeof mv.power === 'number' ? mv.power : 1).toFixed(2) })));
+    if ((mv.cooldown | 0) > 0) lines.appendChild(el('div', 'bui-confirm-line', t('confirm.cooldown', { n: mv.cooldown | 0 })));
+    if ((mv.priority | 0) > 0) lines.appendChild(el('div', 'bui-confirm-line', t('confirm.fast')));
+
+    let mult = 1;
+    try { mult = typeMult(mv.element || 'none', oppEl); } catch (err) { console.error('[battle-ui] typeMult failed', err); }
+    const effLine = mult > 1
+      ? el('div', 'bui-confirm-line bui-eff-super', t('battle.eff.super'))
+      : (mult < 1
+        ? el('div', 'bui-confirm-line bui-eff-weak', t('battle.eff.weak'))
+        : el('div', 'bui-confirm-line', t('confirm.effNormal')));
+    lines.appendChild(effLine);
+    card.appendChild(lines);
+
+    const actions = el('div', 'bui-confirm-actions');
+    const cancelBtn = el('button', 'bui-btn bui-btn-secondary', t('confirm.cancel'));
+    const okBtn = el('button', 'bui-btn', t('confirm.confirm'));
+    const close = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+    cancelBtn.onclick = close;
+    okBtn.onclick = () => { close(); handleLocalAction(mv.id); };
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+    actions.appendChild(cancelBtn);
+    actions.appendChild(okBtn);
+    card.appendChild(actions);
+    overlay.appendChild(card);
+    root.appendChild(overlay);
   }
 
   function animateEvents(events, onDone) {
@@ -804,6 +895,11 @@ function buildPetPanel(snap, isMine) {
     console.error('[battle-ui] renderPet failed', err);
   }
   panel.appendChild(el('div', 'bui-name', `${snap.name}${isMine ? '' : ` Lv.${snap.level}`}`));
+  // v9: show each fighter's element (icon + localized name) so the player can
+  // plan type matchups — especially the opponent's.
+  const elx = (snap.element || (snap.genome && snap.genome.element) || 'none');
+  const elKey = ELEMENT_ICON[elx] ? elx : 'none';
+  panel.appendChild(el('div', 'bui-element', `${ELEMENT_ICON[elKey]} ${t('element.' + elKey)}`));
   const hpWrap = el('div', 'bui-hpwrap');
   const hpBar = el('div', 'bui-hpbar');
   hpBar.style.width = '100%';

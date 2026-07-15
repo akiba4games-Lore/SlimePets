@@ -10,10 +10,16 @@ import {
   xpForNext,
   randomSeed,
   getLearnset,
+  getKnownMoves,
+  getEquipped,
+  equipMove,
+  unequipMove,
+  learnRandomMove,
   checkUnlocks,
   rerollMove,
   rebirth,
   ELEMENTS,
+  STAGE_ORDER,
   STAGE_DURATION_MS,
   EGG_HATCH_MS,
   EGG_HATCH_TAPS,
@@ -102,6 +108,8 @@ const SICK_HAPPY_MULT = 2; // happiness decays this × faster while sick
 
 // v6.1 — training now costs a flat 20 stamina per session (all exercises).
 const TRAIN_STAMINA_COST = 20;
+// v10 — Special training (🌟) costs 100 stamina and teaches a random move.
+const SPECIAL_STAMINA_COST = 100;
 
 // Spoiled food-refusal flavor lines live in i18n as brat.0 … brat.(N-1).
 const BRAT_LINE_COUNT = 3;
@@ -152,6 +160,7 @@ function unlockHint(unlock) {
     case 'weight': return t('unlock.weight', { value: unlock.value });
     case 'education': return t('unlock.education', { value: unlock.value });
     case 'wins': return t('unlock.wins', { value: unlock.value });
+    case 'stage': return t('unlock.stage', { stage: stageLabel(unlock.value) });
     default: return '';
   }
 }
@@ -277,6 +286,7 @@ export function showScreen(name) {
   });
   if (name === 'pet') refresh();
   if (name === 'train') refreshTrain();
+  if (name === 'moves') refreshMoves();
   if (name === 'menu') refreshMenu();
   if (name === 'shop') refreshShop();
 }
@@ -508,10 +518,30 @@ export function openFoodPicker() {
       })
       .join('');
     grid.querySelectorAll('.food-item').forEach((btn) => {
-      btn.addEventListener('click', () => doFeedFood(btn.dataset.food));
+      btn.addEventListener('click', () => openFoodConfirm(btn.dataset.food));
     });
   }
   openSheet('food-sheet');
+}
+
+// v8 — tapping a food opens an in-page confirm popup (NOT native) showing its
+// price + nonzero effects; only Confirm actually feeds. Cancel keeps the picker.
+function openFoodConfirm(key) {
+  const fd = FOODS[key];
+  if (!fd) return;
+  const lines = [t('confirm.price', { coins: fd.cost })];
+  const fx = (label, v) => { if (v) lines.push(`${label} ${v > 0 ? '+' : ''}${v}`); };
+  fx(t('bar.hunger'), fd.hunger);
+  fx(t('bar.hp'), fd.hp);
+  fx(t('bar.stamina'), fd.stamina);
+  fx(t('bar.happiness'), fd.happy);
+  fx(t('life.weight'), fd.weight);
+  openConfirm({
+    title: t('confirm.feedTitle', { food: foodName(key) }),
+    emoji: fd.emoji,
+    lines,
+    onConfirm: () => doFeedFood(key),
+  });
 }
 
 export function doFeedFood(key) {
@@ -712,10 +742,18 @@ function afterAction(mood) {
 // ---------------------------------------------------------------------------
 export function doTrain(name) {
   const pet = state.pet;
-  const ex = EXERCISES[name];
-  if (!pet || !ex) return;
+  if (!pet) return;
   if (pet.state === 'dead') return;
-  if (pet.stage === 'egg') {
+  const isSpecial = name === 'Special';
+  const ex = EXERCISES[name];
+  if (!isSpecial && !ex) return;
+  // v10: Special is gated on stage (child+); basics only need the egg hatched.
+  if (isSpecial) {
+    if (STAGE_ORDER.indexOf(pet.stage) < STAGE_ORDER.indexOf('child')) {
+      toast(t('toast.specialLocked', { name: pet.name }));
+      return;
+    }
+  } else if (pet.stage === 'egg') {
     toast(t('toast.eggFirst'));
     return;
   }
@@ -728,8 +766,9 @@ export function doTrain(name) {
     toast(t('toast.trainBlocked', { name: pet.name, time: fmtDuration(pet.trainBlockUntil - Date.now()) }));
     return;
   }
-  // v6.1: training costs a flat 20 stamina again. Refuse up front if short.
-  if (pet.stamina < TRAIN_STAMINA_COST) {
+  // v6.1/v10: per-exercise stamina cost — 20 for the basics, 100 for Special.
+  const staminaCost = isSpecial ? SPECIAL_STAMINA_COST : TRAIN_STAMINA_COST;
+  if (pet.stamina < staminaCost) {
     toast(t('toast.tooTired', { name: pet.name }));
     return;
   }
@@ -743,6 +782,33 @@ export function doTrain(name) {
     toast(t('lazy.' + idx, { name: pet.name }));
     reaction('💢');
     refreshTrain();
+    save();
+    return;
+  }
+  // v10: Special training — a high-cost gamble that teaches a random move.
+  // Cost: 100 stamina + halve happiness + halve HP (floor 1). No stat gain —
+  // the move IS the reward.
+  if (isSpecial) {
+    pet.stamina = clamp(pet.stamina - SPECIAL_STAMINA_COST, 0, pet.genome.maxStamina);
+    pet.care.happiness = clamp(pet.care.happiness * 0.5, 0, 100);
+    const maxHp = computeStats(pet).hp;
+    pet.hpCurrent = clamp(Math.floor((pet.hpCurrent || maxHp) * 0.5), 1, maxHp);
+    const learned = learnRandomMove(pet);
+    markAchievement();
+    reaction('🌟');
+    bouncePet();
+    playTrainingAnim('Special');
+    if (learned) {
+      toast(t('toast.specialLearned', { name: pet.name, icon: elementIcon(learned.element), move: learned.name }));
+      // If the new move couldn't auto-equip (all 4 slots full), hint the player.
+      const eq = Array.isArray(pet.equipped) ? pet.equipped : [];
+      if (eq.indexOf(learned.id) < 0) {
+        setTimeout(() => toast(t('toast.moveNotEquipped')), 1400);
+      }
+    }
+    refresh();
+    refreshTrain();
+    if (state.screen === 'moves') refreshMoves();
     save();
     return;
   }
@@ -783,6 +849,39 @@ function openSheet(id) {
 function closeSheet(id) {
   const el = $(id);
   if (el) el.classList.remove('open');
+}
+
+// ---------------------------------------------------------------------------
+// v8 — reusable in-page confirm popup (#confirm-popup). openConfirm shows a
+// title + emoji + detail lines with Confirm/Cancel. Confirm runs onConfirm then
+// closes; Cancel (or backdrop) just closes (any picker underneath stays open).
+// ---------------------------------------------------------------------------
+let confirmAction = null;
+export function openConfirm({ title, emoji, lines, onConfirm } = {}) {
+  const pop = $('confirm-popup');
+  if (!pop) return;
+  setText('confirm-title', title || '');
+  const emo = $('confirm-emoji');
+  if (emo) { emo.textContent = emoji || ''; emo.style.display = emoji ? '' : 'none'; }
+  const linesEl = $('confirm-lines');
+  if (linesEl) {
+    linesEl.innerHTML = '';
+    (lines || []).forEach((ln) => {
+      const d = document.createElement('div');
+      d.className = 'confirm-line';
+      d.textContent = ln;
+      linesEl.appendChild(d);
+    });
+  }
+  setText('confirm-ok', t('confirm.confirm'));
+  setText('confirm-cancel', t('confirm.cancel'));
+  confirmAction = typeof onConfirm === 'function' ? onConfirm : null;
+  pop.classList.add('open');
+}
+function closeConfirm() {
+  const pop = $('confirm-popup');
+  if (pop) pop.classList.remove('open');
+  confirmAction = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1117,7 +1216,15 @@ function refreshTrain() {
   }
   // disable exercises while on strike, still an egg, or too tired (v6.1: 20⚡ gate)
   const tooTired = pet.stamina < TRAIN_STAMINA_COST;
+  const stageIdx = STAGE_ORDER.indexOf(pet.stage);
   document.querySelectorAll('.exercise').forEach((btn) => {
+    if (btn.dataset.ex === 'Special') {
+      // v10: Special needs child+, 100 stamina, and is subject to the strike lock.
+      const lockedStage = stageIdx < STAGE_ORDER.indexOf('child');
+      const tooTiredSp = pet.stamina < SPECIAL_STAMINA_COST;
+      btn.classList.toggle('disabled', blocked || lockedStage || tooTiredSp);
+      return;
+    }
     const ex = EXERCISES[btn.dataset.ex];
     if (!ex) return;
     btn.classList.toggle('disabled', blocked || pet.stage === 'egg' || tooTired);
@@ -1135,12 +1242,81 @@ function playTrainingAnim(name) {
   renderPet(svg, pet.genome, pet.stage, { animate: true, element: pet.genome.element });
   const emo = $('train-emoji');
   const ex = EXERCISES[name];
-  if (emo) emo.textContent = ex ? ex.emoji : '💪';
+  if (emo) emo.textContent = name === 'Special' ? '🌟' : (ex ? ex.emoji : '💪');
   stage.classList.remove('perform');
   void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
   stage.classList.add('show', 'perform');
   clearTimeout(trainAnimTimer);
   trainAnimTimer = setTimeout(() => stage.classList.remove('perform', 'show'), 2600);
+}
+
+// ---------------------------------------------------------------------------
+// v10 — Moves management screen. Lists KNOWN moves with an Equip/Unequip toggle
+// (max 4 equipped, never below 1) and LOCKED moves greyed with their unlock hint.
+// ---------------------------------------------------------------------------
+function moveMetaLine(ab) {
+  const parts = [`×${ab.power.toFixed(2)}`];
+  if ((ab.cooldown | 0) > 0) parts.push(`⏳${ab.cooldown | 0}`);
+  if ((ab.priority | 0) > 0) parts.push('⚡');
+  return parts.join('   ');
+}
+
+function refreshMoves() {
+  const pet = state.pet;
+  if (!pet) return;
+  const eq = Array.isArray(pet.equipped) ? pet.equipped : [];
+  const equippedCount = getEquipped(pet).length;
+  setText('moves-equipped', t('moves.equipped', { n: equippedCount }));
+
+  const known = getKnownMoves(pet);
+  const knownIdSet = new Set(known.map((a) => a.id));
+  const knownEl = $('moves-known');
+  if (knownEl) {
+    knownEl.innerHTML = '';
+    known.forEach((ab) => {
+      const isEq = eq.indexOf(ab.id) >= 0;
+      const row = document.createElement('div');
+      row.className = 'move-manage-row';
+      row.innerHTML = `<span class="mm-ico">${elementIcon(ab.element)}</span>`
+        + `<span class="mm-body"><span class="mm-name">${ab.name}</span><span class="mm-sub">${moveMetaLine(ab)}</span></span>`;
+      const btn = document.createElement('button');
+      btn.className = 'mm-toggle' + (isEq ? ' equipped' : '');
+      btn.textContent = isEq ? t('moves.unequip') : t('moves.equip');
+      // Enforce the 4-cap: disable further Equip at 4; can't unequip the last one.
+      btn.disabled = isEq ? (equippedCount <= 1) : (equippedCount >= 4);
+      btn.addEventListener('click', () => toggleEquip(ab.id));
+      row.appendChild(btn);
+      knownEl.appendChild(row);
+    });
+  }
+
+  const lockedEl = $('moves-locked');
+  if (lockedEl) {
+    lockedEl.innerHTML = '';
+    const locked = getLearnset(pet).filter((a) => !knownIdSet.has(a.id));
+    locked.forEach((ab) => {
+      const row = document.createElement('div');
+      row.className = 'move-manage-row locked';
+      row.innerHTML = `<span class="mm-ico">${elementIcon(ab.element)}</span>`
+        + `<span class="mm-body"><span class="mm-name">${ab.name}</span><span class="mm-sub">×${ab.power.toFixed(2)}</span></span>`
+        + `<span class="mm-hint">🔒 ${unlockHint(ab.unlock)}</span>`;
+      lockedEl.appendChild(row);
+    });
+  }
+}
+
+function toggleEquip(id) {
+  const pet = state.pet;
+  if (!pet) return;
+  const isEq = Array.isArray(pet.equipped) && pet.equipped.indexOf(id) >= 0;
+  if (isEq) {
+    if (!unequipMove(pet, id)) { toast(t('moves.cantRemoveLast')); return; }
+  } else if (!equipMove(pet, id)) {
+    toast(t('moves.maxReached'));
+    return;
+  }
+  save();
+  refreshMoves();
 }
 
 // ---------------------------------------------------------------------------
@@ -1531,6 +1707,17 @@ export function initGame() {
     btn.addEventListener('click', () => doTrain(btn.dataset.ex));
   });
 
+  // v10 — Moves management screen (opened from Training)
+  bindClick('btn-moves', () => showScreen('moves'));
+  bindClick('btn-moves-back', () => showScreen('train'));
+
+  // v8 — confirm popup (food + general). Confirm runs the stored action; Cancel
+  // or a backdrop tap just closes (the picker underneath stays open).
+  bindClick('confirm-ok', () => { const fn = confirmAction; closeConfirm(); if (fn) fn(); });
+  bindClick('confirm-cancel', closeConfirm);
+  const confirmPop = $('confirm-popup');
+  if (confirmPop) confirmPop.addEventListener('click', (e) => { if (e.target === confirmPop) closeConfirm(); });
+
   // shop navigation + notifications toggle
   bindClick('btn-shop', () => showScreen('shop'));
   bindClick('btn-shop-back', () => showScreen('menu'));
@@ -1578,6 +1765,7 @@ export function initGame() {
     highlightActiveLang();
     if (state.pet) refresh();
     refreshTrain();
+    refreshMoves(); // re-apply Equip/Unequip + "Equipped n/4" labels
     refreshMenu(); // re-apply the (possibly cooldown) egg-button label
     refreshShop(); // re-apply shop coins + notification button label
   });

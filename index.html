@@ -115,8 +115,24 @@
         <button class="exercise" data-ex="Swim"><span class="ex-ico">🏊</span><span class="ex-name" data-i18n="train.swim">Swim</span><span class="ex-stat" data-i18n="train.plusHp">+HP</span><span class="ex-cost">20⚡</span></button>
         <button class="exercise" data-ex="Block"><span class="ex-ico">🛡️</span><span class="ex-name" data-i18n="train.block">Block</span><span class="ex-stat" data-i18n="train.plusDef">+DEF</span><span class="ex-cost">20⚡</span></button>
         <button class="exercise" data-ex="Focus"><span class="ex-ico">🎯</span><span class="ex-name" data-i18n="train.focus">Focus</span><span class="ex-stat" data-i18n="train.plusCrit">+CRIT</span><span class="ex-cost">20⚡</span></button>
+        <button class="exercise special" data-ex="Special"><span class="ex-ico">🌟</span><span class="ex-name" data-i18n="train.special">Special</span><span class="ex-stat">🎲</span><span class="ex-cost">100⚡</span></button>
       </div>
+      <button id="btn-moves" class="big-btn" data-i18n="moves.button">📖 Moves</button>
       <p class="hint" data-i18n="train.hint">A lazy slime might refuse to train — that's free, at least!</p>
+    </div>
+  </section>
+
+  <!-- ===================== MOVES MANAGEMENT SCREEN ===================== -->
+  <section id="screen-moves" class="screen">
+    <header class="topbar">
+      <div class="title"><span class="pet-name" data-i18n="moves.title">Moves</span><span id="moves-equipped" class="pet-sub">Equipped 0/4</span></div>
+    </header>
+    <div class="moves-body">
+      <h4 class="info-h" data-i18n="moves.known">Known moves</h4>
+      <div id="moves-known" class="moves-manage"></div>
+      <h4 class="info-h" data-i18n="moves.locked">Locked moves</h4>
+      <div id="moves-locked" class="moves-manage"></div>
+      <button id="btn-moves-back" class="big-btn" data-i18n="moves.back">⬅ Back</button>
     </div>
   </section>
 
@@ -234,6 +250,19 @@
     <div class="sheet">
       <div class="sheet-head"><span data-i18n="shop.rerollPick">🎲 Pick a move to reroll</span><button id="reroll-close" class="info-close" aria-label="close">✕</button></div>
       <div id="reroll-grid" class="food-grid"></div>
+    </div>
+  </div>
+
+  <!-- ===================== CONFIRM POPUP (food / general) ===================== -->
+  <div id="confirm-popup" class="confirm-overlay">
+    <div class="confirm-card">
+      <div id="confirm-emoji" class="confirm-emoji"></div>
+      <div id="confirm-title" class="confirm-title"></div>
+      <div id="confirm-lines" class="confirm-lines"></div>
+      <div class="confirm-actions">
+        <button id="confirm-cancel" class="big-btn" data-i18n="confirm.cancel">Cancel</button>
+        <button id="confirm-ok" class="big-btn accent" data-i18n="confirm.confirm">Confirm</button>
+      </div>
     </div>
   </div>
 </div>

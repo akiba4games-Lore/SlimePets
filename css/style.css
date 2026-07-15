@@ -906,3 +906,84 @@ body {
 }
 .shop-buy:active { transform: scale(0.94); }
 .big-btn.disabled, .big-btn:disabled { opacity: 0.5; filter: grayscale(0.4); cursor: default; }
+
+/* ---------------- v8: confirm popup (food / general) ---------------- */
+.confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: rgba(80, 60, 90, 0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.confirm-overlay.open { display: flex; }
+.confirm-card {
+  width: 100%;
+  max-width: 320px;
+  background: linear-gradient(160deg, #fff5fb, #eef4ff);
+  border-radius: 24px;
+  box-shadow: 0 12px 34px rgba(120, 90, 140, 0.4);
+  padding: 20px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  animation: pop 0.3s ease;
+}
+.confirm-emoji { font-size: 44px; line-height: 1; }
+.confirm-title { font-size: 18px; font-weight: 800; color: var(--pink-d); text-align: center; }
+.confirm-lines { display: flex; flex-direction: column; gap: 4px; width: 100%; margin: 4px 0 8px; }
+.confirm-line {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  padding: 5px 10px;
+}
+.confirm-actions { display: flex; gap: 10px; width: 100%; }
+.confirm-actions .big-btn { flex: 1; padding: 12px; }
+
+/* ---------------- v10: moves management screen ---------------- */
+.moves-body { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.moves-manage { display: flex; flex-direction: column; gap: 8px; }
+.move-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+}
+.move-manage-row.locked { opacity: 0.55; filter: grayscale(0.4); }
+.move-manage-row .mm-ico { font-size: 20px; width: 24px; text-align: center; }
+.move-manage-row .mm-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.move-manage-row .mm-name { font-size: 15px; font-weight: 800; color: var(--ink); }
+.move-manage-row .mm-sub { font-size: 11px; font-weight: 700; color: var(--ink-soft); }
+.move-manage-row .mm-hint { font-size: 11px; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+.mm-toggle {
+  border: none;
+  border-radius: 14px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(90deg, var(--pink), var(--lav));
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s ease;
+}
+.mm-toggle:active { transform: scale(0.94); }
+.mm-toggle.equipped { background: var(--mint); color: #2a5a40; }
+.mm-toggle:disabled { opacity: 0.5; filter: grayscale(0.4); cursor: default; }
+
+/* Special training exercise (🌟) — a little sparkly to stand out. */
+.exercise.special { background: linear-gradient(90deg, #fff0f8, #f3ecff); }
+.exercise.special .ex-name { color: var(--pink-d); }
+.exercise.special .ex-stat { font-size: 16px; }
