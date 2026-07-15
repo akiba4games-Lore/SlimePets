@@ -104,13 +104,12 @@ function layout(stage) {
 function bodyPath(shape, cx, cy, w, h) {
   switch (shape) {
     case 'drop':
-      // cute water droplet: soft point on top, full round bottom (not seed-like)
+      // water droplet: pointed on TOP, perfectly ROUND bottom (circular arc)
       return (
-        `M ${cx} ${cy - h * 1.1} ` +
-        `C ${cx + w * 0.62} ${cy - h * 0.85} ${cx + w} ${cy - h * 0.15} ${cx + w} ${cy + h * 0.35} ` +
-        `C ${cx + w} ${cy + h * 0.8} ${cx + w * 0.6} ${cy + h} ${cx} ${cy + h} ` +
-        `C ${cx - w * 0.6} ${cy + h} ${cx - w} ${cy + h * 0.8} ${cx - w} ${cy + h * 0.35} ` +
-        `C ${cx - w} ${cy - h * 0.15} ${cx - w * 0.62} ${cy - h * 0.85} ${cx} ${cy - h * 1.1} Z`
+        `M ${cx} ${cy - h * 1.15} ` +
+        `C ${cx + w * 0.5} ${cy - h * 0.92} ${cx + w} ${cy - h * 0.1} ${cx + w} ${cy + h * 0.3} ` +
+        `A ${w} ${h * 0.72} 0 0 1 ${cx - w} ${cy + h * 0.3} ` +
+        `C ${cx - w} ${cy - h * 0.1} ${cx - w * 0.5} ${cy - h * 0.92} ${cx} ${cy - h * 1.15} Z`
       );
     case 'square': {
       // rounded squircle
