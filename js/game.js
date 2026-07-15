@@ -21,6 +21,7 @@ import {
 import { renderPet } from './render.js';
 import { saveGame, loadGame, clearGame } from './storage.js';
 import { t, getLang, setLang, onLangChange, applyStaticI18n } from './i18n.js';
+import { clearRivals } from './rivals.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -86,7 +87,6 @@ const DIRTY_DECAY_MULT = 1.6;
 const CURE_COST = 50;
 const STAMINA_POTION_COST = 50;
 const REROLL_COST = 200;
-const EGG_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 real hours between manual hatches
 
 // Spoiled food-refusal flavor lines live in i18n as brat.0 … brat.(N-1).
 const BRAT_LINE_COUNT = 3;
@@ -1118,20 +1118,19 @@ function tapEgg() {
 // ---------------------------------------------------------------------------
 export function newEgg(name, seed) {
   state.pet = createPet(name, seed != null ? seed >>> 0 : randomSeed());
-  // §7: a MANUAL hatch starts the 4h cooldown for the next one. (rebirth after
-  // death does NOT go through here, so it is never blocked.)
-  state.pet.lastEggAt = Date.now();
   save();
   showScreen('pet');
   refresh();
   toast(t('toast.mysteriousEgg'));
 }
 
+// "Reset Everything" is now the ONLY way to start over — a full account wipe:
+// the pet, the Rivals roster, coins and all progress are cleared, and a brand
+// new egg (400 coins) is hatched. (There is no separate "new egg" button/timer.)
 export function resetGame() {
   clearGame();
+  clearRivals();
   newEgg('Slime', randomSeed());
-  // A full reset must not leave the new egg locked behind the 4h cooldown.
-  if (state.pet) state.pet.lastEggAt = 0;
   save();
 }
 
@@ -1207,32 +1206,10 @@ function grantBattleResult(won, info) {
 
 // ---------------------------------------------------------------------------
 // v5 — New-egg cooldown (§7)
-// ---------------------------------------------------------------------------
-// Milliseconds until the Menu "Hatch a New Egg" action is allowed again
-// (0 = allowed now). Based on the current pet's lastEggAt, which is stamped
-// only when a MANUAL hatch happens. Death→rebirth never stamps it (exempt).
-function eggCooldownRemaining() {
-  const pet = state.pet;
-  if (!pet) return 0;
-  const last = typeof pet.lastEggAt === 'number' ? pet.lastEggAt : 0;
-  return Math.max(0, last + EGG_COOLDOWN_MS - Date.now());
-}
-
-// Refresh the Menu screen's new-egg button (disabled + remaining time on cooldown).
-function refreshMenu() {
-  const btn = $('btn-new-egg');
-  if (!btn) return;
-  const remain = eggCooldownRemaining();
-  if (remain > 0) {
-    btn.disabled = true;
-    btn.classList.add('disabled');
-    btn.textContent = t('menu.eggCooldown', { time: fmtDuration(remain) });
-  } else {
-    btn.disabled = false;
-    btn.classList.remove('disabled');
-    btn.textContent = t('menu.newEgg');
-  }
-}
+// The menu has no dynamic content anymore (the timed "new egg" button was
+// removed — "Reset Everything" is the only restart). Kept as a no-op so the
+// existing call sites (showScreen/tick/onLangChange) stay valid.
+function refreshMenu() {}
 
 // ---------------------------------------------------------------------------
 // v5 — Shop (§6)
@@ -1455,17 +1432,6 @@ export function initGame() {
     btn.addEventListener('click', () => doTrain(btn.dataset.ex));
   });
 
-  // menu buttons
-  bindClick('btn-new-egg', () => {
-    const remain = eggCooldownRemaining();
-    if (remain > 0) { // §7: blocked while cooling down
-      toast(t('menu.eggCooldown', { time: fmtDuration(remain) }));
-      return;
-    }
-    const nameInput = $('menu-name');
-    const nm = nameInput && nameInput.value ? nameInput.value : 'Slime';
-    newEgg(nm, randomSeed());
-  });
   // shop navigation + notifications toggle
   bindClick('btn-shop', () => showScreen('shop'));
   bindClick('btn-shop-back', () => showScreen('menu'));

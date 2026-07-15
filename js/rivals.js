@@ -56,6 +56,16 @@ function persist(store) {
   }
 }
 
+/** Wipe the whole rivals roster (used by a full account reset). It re-seeds
+ *  the default starter rivals the next time the battle menu opens. */
+export function clearRivals() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch (e) {
+    console.warn('[rivals] clear failed', e);
+  }
+}
+
 // Stable, unique id from the snapshot (genome.seed + name).
 function makeId(snap) {
   const seed = snap && snap.genome && Number.isFinite(snap.genome.seed)
