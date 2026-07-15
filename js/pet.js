@@ -389,13 +389,25 @@ export function getLearnset(pet) {
   const c2 = { ...pickFrom(rng, COND_POOLS.medium) };
   list.push(buildAbility('m2', moveNameFor(el, 'mid'), c2, rng));
   // slot 3 (m3) — ONE random move: random element, tier basic/mid/strong (NOT
-  // special), unlock = 1 random condition from THAT tier's pool.
-  const relEl = pickFrom(rng, ELEMENTS);
-  const relTier = pickFrom(rng, ['basic', 'mid', 'strong']);
-  const c3 = { ...pickFrom(rng, COND_POOLS[TIER_POOL[relTier]]) };
-  list.push(buildAbility('m3', moveNameFor(relEl, relTier), c3, rng));
-  // slot 4 (m4) — own-element SPECIAL, unlock = its FIXED SPECIAL condition.
+  // special), unlock = 1 random condition from THAT tier's pool. v12: it must be
+  // DISTINCT from every other move this pet has (Attack, own basic/mid/special);
+  // on a name clash re-roll deterministically (the seeded rng keeps advancing).
   const specName = moveNameFor(el, 'special');
+  const taken = new Set(list.map((a) => a.name)); // Attack, m1 (basic), m2 (mid)
+  taken.add(specName);
+  let relEl;
+  let relTier;
+  let relName;
+  let guard = 0;
+  do {
+    relEl = pickFrom(rng, ELEMENTS);
+    relTier = pickFrom(rng, ['basic', 'mid', 'strong']);
+    relName = moveNameFor(relEl, relTier);
+    guard += 1;
+  } while (taken.has(relName) && guard < 40);
+  const c3 = { ...pickFrom(rng, COND_POOLS[TIER_POOL[relTier]]) };
+  list.push(buildAbility('m3', relName, c3, rng));
+  // slot 4 (m4) — own-element SPECIAL, unlock = its FIXED SPECIAL condition.
   const specCond = (MOVE_STATS[specName] && MOVE_STATS[specName].special) || { type: 'always' };
   list.push(buildAbility('m4', specName, { ...specCond }, rng));
 
@@ -440,8 +452,13 @@ export function rerollMove(pet, slotId) {
   if (!getLearnset(pet).some((a) => a.id === slotId)) return null;
   const rng = mulberry32(randomSeed());
   // Pick a random named move FROM the stats table (incl. specials/charge moves)
-  // and take its real stats; power is rolled from the move's range.
-  const names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
+  // and take its real stats; power is rolled from the move's range. v12: prefer
+  // a move the pet does NOT already own (learnset + extras) so no duplicates.
+  const owned = new Set();
+  for (const a of getLearnset(pet)) owned.add(a.name);
+  for (const a of getExtraMoves(pet)) owned.add(a.name);
+  let names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack' && !owned.has(n));
+  if (names.length === 0) names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
   const name = names[Math.floor(rng() * names.length) % names.length];
   const s = MOVE_STATS[name];
   pet.moveOverrides[slotId] = {
@@ -574,7 +591,13 @@ export function learnRandomMove(pet) {
   if (!Array.isArray(pet.equipped) || pet.equipped.length === 0) pet.equipped = defaultEquipped(pet);
 
   const rng = mulberry32(randomSeed());
-  const names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
+  // v12: teach a move the pet does NOT already own (learnset + extras) so it
+  // never learns a duplicate; only fall back to the full pool if all are taken.
+  const owned = new Set();
+  for (const a of getLearnset(pet)) owned.add(a.name);
+  for (const a of getExtraMoves(pet)) owned.add(a.name);
+  let names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack' && !owned.has(n));
+  if (names.length === 0) names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
   const name = names[Math.floor(rng() * names.length) % names.length];
   const s = MOVE_STATS[name];
   const power = rollPower(rng, s);
@@ -661,7 +684,7 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 11,
+    version: 12,
     name: (name && String(name).trim()) || 'Slime',
     genome,
     stage: 'egg',
@@ -679,6 +702,8 @@ export function createPet(name, seed) {
     lastFreeHealAt: 0, // (legacy, unused) timestamp of the last free heal
     healCharges: 3, // 🩹 Heal charges (each = +50% HP); refills 1 / 4h up to 3
     healRefillAt: 0, // ms of the next heal-charge refill (0 = full)
+    playCharges: 3, // 🎈 Play (RPS) charges; refills 1 / 5 min up to 3 (v12)
+    playRefillAt: 0, // ms of the next play-charge refill (0 = full)
     lastEggAt: 0, // v5: timestamp of the last MANUAL "Hatch a New Egg" (4h cooldown §7)
     level: 1,
     xp: 0,
@@ -877,6 +902,42 @@ export function serializePet(pet) {
   return JSON.parse(JSON.stringify(pet));
 }
 
+// ---------------------------------------------------------------------------
+// v12 — Pet export / import codes. The pet is serialized to JSON, unicode-safe
+// base64-encoded and prefixed "SLM1:", so it can be copied to another
+// browser/device and re-loaded. Both helpers are fully guarded (never throw).
+// ---------------------------------------------------------------------------
+const PET_CODE_PREFIX = 'SLM1:';
+
+// exportPetCode(pet) -> "SLM1:<base64>" string (or null on failure).
+export function exportPetCode(pet) {
+  try {
+    if (!pet) return null;
+    const json = JSON.stringify(serializePet(pet));
+    return PET_CODE_PREFIX + btoa(unescape(encodeURIComponent(json)));
+  } catch (e) {
+    console.warn('[pet] exportPetCode failed', e);
+    return null;
+  }
+}
+
+// importPetCode(code) -> a fully-migrated pet (via deserializePet), or null on
+// any error (empty/garbage/bad base64/bad JSON never throw).
+export function importPetCode(code) {
+  try {
+    if (typeof code !== 'string') return null;
+    let s = code.trim();
+    if (!s) return null;
+    if (s.indexOf(PET_CODE_PREFIX) === 0) s = s.slice(PET_CODE_PREFIX.length);
+    const json = decodeURIComponent(escape(atob(s)));
+    const obj = JSON.parse(json);
+    return deserializePet(obj) || null;
+  } catch (e) {
+    console.warn('[pet] importPetCode failed', e);
+    return null;
+  }
+}
+
 export function deserializePet(obj) {
   if (!obj || typeof obj !== 'object') return null;
   const genome = sanitizeGenome(obj.genome);
@@ -884,7 +945,7 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 11;
+  pet.version = 12;
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -912,6 +973,10 @@ export function deserializePet(obj) {
   if (typeof pet.healCharges !== 'number' || !isFinite(pet.healCharges)) pet.healCharges = 3;
   pet.healCharges = Math.max(0, Math.min(3, Math.floor(pet.healCharges)));
   if (typeof pet.healRefillAt !== 'number' || !isFinite(pet.healRefillAt)) pet.healRefillAt = 0;
+  // v12 — Play (🎈/RPS) charges: 3, +1 every 5 min. Default 3/0 for older saves.
+  if (typeof pet.playCharges !== 'number' || !isFinite(pet.playCharges)) pet.playCharges = 3;
+  pet.playCharges = Math.max(0, Math.min(3, Math.floor(pet.playCharges)));
+  if (typeof pet.playRefillAt !== 'number' || !isFinite(pet.playRefillAt)) pet.playRefillAt = 0;
   // hpCurrent: default to max for old saves, always clamp to [1, max].
   const maxHp = computeStats(pet).hp;
   pet.hpCurrent = clampHp(pet.hpCurrent, maxHp);

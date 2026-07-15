@@ -11,18 +11,12 @@
 //   { id, name, snap, source:'qr'|'seed', savedAt, wins, losses }
 // where wins/losses are YOUR record vs this rival.
 
-import { generateWildOpponent } from './battle-ai.js';
-
 const KEY = 'slimepets_rivals_v1';
 
-// Fixed seed rivals (constant seeds => deterministic starter roster; no
-// Math.random / Date.now at seed time). Varied levels & fun names.
-const SEED_RIVALS = [
-  { name: 'Pixel', level: 2, seed: 0x50DA1001 },
-  { name: 'Waffle', level: 4, seed: 0x50DA2002 },
-  { name: 'Nimbus', level: 6, seed: 0x50DA3003 },
-  { name: 'Biscuit', level: 9, seed: 0x50DA4004 },
-];
+// v12 — the Rivals roster is REAL local opponents ONLY: no generated "seed"
+// rivals anymore. The roster starts empty and grows solely when a QR/local
+// battle completes (saveRival(oppSnap, 'qr')). Legacy 'seed' entries are purged
+// on load (see load()).
 
 // ---- persistence (all JSON.parse guarded) ----------------------------------
 
@@ -39,7 +33,13 @@ function load() {
     if (!data || typeof data !== 'object' || !Array.isArray(data.list)) {
       return { seeded: false, list: [] };
     }
-    return { seeded: !!data.seeded, list: data.list.filter(isValidEntry) };
+    // v12: keep only valid entries AND drop any legacy 'seed' rivals. If a purge
+    // happened, persist the cleaned store so the seeds are gone permanently.
+    const valid = data.list.filter(isValidEntry);
+    const cleaned = valid.filter((e) => e.source !== 'seed');
+    const store = { seeded: !!data.seeded, list: cleaned };
+    if (cleaned.length !== valid.length) persist(store);
+    return store;
   } catch (e) {
     console.warn('[rivals] load failed, resetting store', e);
     return { seeded: false, list: [] };
@@ -142,23 +142,10 @@ export function removeRival(id) {
 }
 
 /**
- * ensureSeeded() — on first run (or after a corrupt-storage reset) populate a
- * few generated seed rivals at varied levels so the roster isn't empty.
- * Idempotent: does nothing once the store has been seeded. Returns the list.
+ * ensureSeeded() — v12 NO-OP. The Rivals roster is REAL local opponents only,
+ * so there are no generated seed rivals; the roster starts empty and grows only
+ * via saveRival(oppSnap, 'qr'). Kept as an export for back-compat call sites.
  */
 export function ensureSeeded() {
-  const store = load();
-  if (store.seeded) return listFrom(store);
-  for (const s of SEED_RIVALS) {
-    try {
-      const snap = generateWildOpponent(s.level, s.seed);
-      snap.name = s.name;
-      upsert(store, snap, 'seed');
-    } catch (e) {
-      console.error('[rivals] failed to build seed rival', s.name, e);
-    }
-  }
-  store.seeded = true;
-  persist(store);
-  return listFrom(store);
+  return listRivals();
 }

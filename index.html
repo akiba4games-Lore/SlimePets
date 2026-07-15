@@ -103,10 +103,6 @@
       </div>
       <div class="bar slim"><div id="train-stamina-fill" class="bar-fill stamina"></div></div>
 
-      <div id="train-stage" class="train-stage">
-        <span id="train-emoji" class="train-emoji">💪</span>
-        <svg id="train-svg" viewBox="0 0 200 200" aria-hidden="true"></svg>
-      </div>
       <div id="train-strike" class="train-strike" style="display:none"></div>
 
       <div class="exercises">
@@ -154,6 +150,15 @@
 
       <button id="btn-language" class="big-btn" data-i18n="menu.languageBtn">🌐 Language</button>
 
+      <button id="btn-changelog" class="big-btn" data-i18n="menu.changelog">📋 What's New</button>
+
+      <div class="menu-io">
+        <button id="btn-export-pet" class="big-btn" data-i18n="menu.exportPet">📤 Copy Pet</button>
+        <textarea id="export-code" class="io-code" readonly rows="2" style="display:none"></textarea>
+        <input id="import-code" class="io-input" type="text" data-i18n-ph="menu.importPh" placeholder="Paste pet code" />
+        <button id="btn-import-pet" class="big-btn" data-i18n="menu.importPet">📥 Load Pet</button>
+      </div>
+
       <button id="btn-notify" class="big-btn" data-i18n="notif.enable">🔔 Enable notifications</button>
       <p class="hint" data-i18n="notif.hint">Reminders only work while SlimePets is open in a tab.</p>
 
@@ -162,6 +167,19 @@
         <button id="btn-reset" class="big-btn danger" data-i18n="menu.reset">Reset Everything</button>
         <button id="btn-reset-cancel" class="big-btn" data-i18n="menu.cancel" style="display:none">Cancel</button>
       </div>
+
+      <div id="menu-version" class="menu-version">v0.12</div>
+    </div>
+  </section>
+
+  <!-- ===================== CHANGELOG SCREEN ===================== -->
+  <section id="screen-changelog" class="screen">
+    <header class="topbar">
+      <div class="title"><span id="changelog-title" class="pet-name">What's New</span></div>
+    </header>
+    <div class="changelog-body">
+      <div id="changelog-list" class="changelog-list"></div>
+      <button id="btn-changelog-back" class="big-btn">⬅ Back</button>
     </div>
   </section>
 
@@ -262,6 +280,14 @@
         <button id="confirm-cancel" class="big-btn" data-i18n="confirm.cancel">Cancel</button>
         <button id="confirm-ok" class="big-btn accent" data-i18n="confirm.confirm">Confirm</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== v12 — centered training-animation modal (workout / refusal) ===== -->
+  <div id="train-anim-overlay" class="train-anim-overlay" aria-hidden="true">
+    <div id="train-stage" class="train-stage">
+      <span id="train-emoji" class="train-emoji">💪</span>
+      <svg id="train-svg" viewBox="0 0 200 200" aria-hidden="true"></svg>
     </div>
   </div>
 </div>

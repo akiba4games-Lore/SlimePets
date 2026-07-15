@@ -1000,3 +1000,69 @@ body {
 .exercise.special { background: linear-gradient(90deg, #fff0f8, #f3ecff); }
 .exercise.special .ex-name { color: var(--pink-d); }
 .exercise.special .ex-stat { font-size: 16px; }
+
+/* ---------------- v12: centered training-animation modal ---------------- */
+.train-anim-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 20px;
+}
+.train-anim-overlay.open { display: flex; }
+/* In the overlay the stage is a fixed-width centered card (its children are
+   absolutely positioned, so it needs an explicit width to not collapse). */
+.train-anim-overlay .train-stage {
+  width: min(300px, 82vw);
+  height: 150px;
+  pointer-events: none;
+}
+
+/* ---------------- v12: menu version + changelog + pet export/import ------- */
+.menu-version {
+  align-self: flex-start;
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
+.changelog-body { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.changelog-list { display: flex; flex-direction: column; gap: 12px; }
+.changelog-entry {
+  background: var(--panel);
+  border-radius: 18px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.changelog-version { font-size: 15px; font-weight: 800; color: var(--pink-d); margin-bottom: 4px; }
+.changelog-item { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.35; }
+.menu-io { display: flex; flex-direction: column; gap: 8px; }
+.io-code {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--ink);
+  padding: 10px 12px;
+  border: 2px solid #ffd3e8;
+  border-radius: 14px;
+  background: #fff;
+  resize: none;
+  word-break: break-all;
+  width: 100%;
+}
+.io-input {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 10px 12px;
+  border: 2px solid #ffd3e8;
+  border-radius: 14px;
+  background: #fff;
+  outline: none;
+  width: 100%;
+}
+.io-input:focus { border-color: var(--pink); }

@@ -17,7 +17,7 @@ import { generateWildOpponent, pickAction, randomGenome } from './battle-ai.js';
 import { createHost, createGuest, renderQR, startScanner } from './net.js';
 import { renderPet } from './render.js';
 import { battleSnapshot, grantBattleXp } from './pet.js';
-import { listRivals, saveRival, recordResult, removeRival, ensureSeeded } from './rivals.js';
+import { listRivals, saveRival, recordResult, removeRival } from './rivals.js';
 import { t, onLangChange } from './i18n.js';
 
 // Re-render hook for the CURRENT battle-area view, so a live language switch
@@ -73,6 +73,11 @@ function ensureStyles() {
     .bui-btn:active { transform: scale(0.97); }
     .bui-btn:disabled { opacity:0.5; cursor:default; }
     .bui-btn-secondary { background:hsl(200 60% 88%); }
+    .bui-hub { position:relative; padding-top:28px; }
+    .bui-rivals-btn { position:absolute; top:8px; right:10px; width:48px; height:48px;
+      border-radius:50%; border:none; background:hsl(280 70% 90%); color:#402a55;
+      font-size:1.4rem; cursor:pointer; box-shadow:0 2px 8px rgba(120,90,140,0.3); }
+    .bui-rivals-btn:active { transform:scale(0.94); }
     .bui-link { display:flex; flex-direction:column; gap:14px; padding:20px; align-items:center; text-align:center; }
     .bui-qr-box { background:#fff; padding:10px; border-radius:12px; display:inline-block; }
     .bui-id-text { font-family:monospace; font-size:1rem; background:hsl(0 0% 95%); padding:8px 12px;
@@ -332,21 +337,53 @@ function applyBattleRewardsAndCost(won, info) {
 
 // ---- menu -------------------------------------------------------------------
 
+// v12 — the battle tab is a HUB: three big buttons (Random / Local / Prep) plus
+// a Rivals button in the TOP-RIGHT corner. Each hub button opens its own view.
 function renderMenu() {
   currentRerender = renderMenu;
   const root = qs('screen-battle');
   if (!root) return;
   root.innerHTML = '';
-  const wrap = el('div', 'bui-menu');
+  const wrap = el('div', 'bui-menu bui-hub');
+
+  // Rivals roster — small button in the top-right of the hub.
+  const rivalsBtn = el('button', 'bui-rivals-btn', '👥');
+  rivalsBtn.title = t('battle.rivals');
+  rivalsBtn.setAttribute('aria-label', t('battle.rivals'));
+  rivalsBtn.onclick = openRivals;
+  wrap.appendChild(rivalsBtn);
+
   wrap.appendChild(el('h2', null, t('battle.title')));
 
-  const wildBtn = el('button', 'bui-btn', t('battle.wild'));
-  wildBtn.onclick = startWildBattle;
+  const randomBtn = el('button', 'bui-btn', t('battle.hub.random'));
+  randomBtn.onclick = startWildBattle;
 
-  const rivalsBtn = el('button', 'bui-btn', t('battle.rivals'));
-  rivalsBtn.onclick = openRivals;
+  const localBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.hub.local'));
+  localBtn.onclick = openLocalPanel;
 
-  const hostBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.hostQr'));
+  const prepBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.hub.prep'));
+  prepBtn.onclick = () => goToScreen('moves');
+
+  wrap.appendChild(randomBtn);
+  wrap.appendChild(localBtn);
+  wrap.appendChild(prepBtn);
+  root.appendChild(wrap);
+}
+
+// v12 — the "Local battle" sub-panel: Host QR / Join by QR / Join by code, plus
+// a Back-to-hub button.
+function openLocalPanel() {
+  currentRerender = openLocalPanel;
+  ensureStyles();
+  cleanupLinkScreen();
+  goToScreen('battle');
+  const root = qs('screen-battle');
+  if (!root) return;
+  root.innerHTML = '';
+  const wrap = el('div', 'bui-menu');
+  wrap.appendChild(el('h2', null, t('battle.localTitle')));
+
+  const hostBtn = el('button', 'bui-btn', t('battle.hostQr'));
   hostBtn.onclick = startHostFlow;
 
   const joinQrBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.joinQr'));
@@ -355,16 +392,13 @@ function renderMenu() {
   const joinCodeBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.joinCode'));
   joinCodeBtn.onclick = startJoinCodeFlow;
 
-  // v11 — the Moves management screen is reached from the battle menu.
-  const movesBtn = el('button', 'bui-btn bui-btn-secondary', t('moves.button'));
-  movesBtn.onclick = () => goToScreen('moves');
+  const backBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.back'));
+  backBtn.onclick = openMenu;
 
-  wrap.appendChild(wildBtn);
-  wrap.appendChild(rivalsBtn);
   wrap.appendChild(hostBtn);
   wrap.appendChild(joinQrBtn);
   wrap.appendChild(joinCodeBtn);
-  wrap.appendChild(movesBtn);
+  wrap.appendChild(backBtn);
   root.appendChild(wrap);
 }
 
@@ -1068,8 +1102,8 @@ function showResultScreen(winner, mySide, net, mode, state, oppSnap, rival) {
 function openMenu() {
   ensureStyles();
   cleanupLinkScreen();
-  // Populate the roster with seed rivals on first open (idempotent).
-  try { ensureSeeded(); } catch (err) { console.error('[battle-ui] ensureSeeded failed', err); }
+  // v12: no seeding — the Rivals roster is REAL local opponents only. It grows
+  // solely when a QR/local battle completes (saveRival(oppSnap, 'qr')).
   goToScreen('battle');
   renderMenu();
 }

@@ -18,6 +18,8 @@ import {
   checkUnlocks,
   rerollMove,
   rebirth,
+  exportPetCode,
+  importPetCode,
   ELEMENTS,
   STAGE_ORDER,
   STAGE_DURATION_MS,
@@ -54,6 +56,50 @@ const HEAL_RATE_SLEEP = 0.32; // +32% / hour
 const HEAL_FREE_COOLDOWN_MS = 4 * 60 * 60 * 1000; // per-charge refill: 1 / 4h
 const HEAL_PCT = 0.5;        // each heal restores 50% of max HP
 const HEAL_MAX_CHARGES = 3;  // up to 3 charges stored
+
+// v12 — Play (🎈 Rock-Paper-Scissors) is limited to CHARGES, mirroring Heal:
+// 3 charges, one refills every 5 minutes (up to 3). Playing stays otherwise free.
+const PLAY_REFILL_MS = 5 * 60 * 1000; // per-charge refill: 1 / 5 min
+const PLAY_MAX_CHARGES = 3;           // up to 3 charges stored
+
+// v12 — game version + menu changelog (newest-first). Item text carries EN + IT
+// (JA where straightforward); headings are localized via i18n.
+export const GAME_VERSION = 'v0.12';
+const CHANGELOG = [
+  { version: 'v0.12', items: [{
+    en: 'Battle area split into Random / Local / Prep panels; Rivals moved top-right (local opponents only); Play limited to 3 charges (refills every 5 min); changelog + version in the menu.',
+    it: 'Area battaglia divisa in pannelli Casuale / Locale / Preparazione; Rivali spostati in alto a destra (solo avversari locali); Gioca limitato a 3 cariche (si ricarica ogni 5 min); novità + versione nel menu.',
+    ja: 'バトル画面を「ランダム / ローカル / じゅんび」に分割。ライバルは右上へ（ローカルのあいてのみ）。あそぶは3かいまで（5ふんで1かいかいふく）。メニューに こうしんりれきと バージョンを ついか。',
+  }] },
+  { version: 'v0.11', items: [{
+    en: 'Full move system: per-move stats with effects (buffs, debuffs, heal, recoil, guard, charge), cooldowns & priority (fast moves); random learnset; special training teaches a random move; move-equip screen.',
+    it: 'Sistema mosse completo: statistiche per mossa con effetti (potenziamenti, indebolimenti, cura, contraccolpo, parata, carica), ricariche e priorità (mosse veloci); set di mosse casuale; l\'allenamento speciale insegna una mossa casuale; schermata equipaggiamento mosse.',
+  }] },
+  { version: 'v0.10', items: [{
+    en: 'Heal reworked to 3 charges of 50%; illness + Syringe cure; sad face below 50% happiness; rounder "drop" body.',
+    it: 'Cura rifatta con 3 cariche del 50%; malattia + cura con Siringa; faccina triste sotto il 50% di felicità; corpo a "goccia" più tondo.',
+  }] },
+  { version: 'v0.9', items: [{
+    en: 'Elements & type chart; body color follows the element; persistent HP; death & rebirth; starvation.',
+    it: 'Elementi e tabella dei tipi; il colore del corpo segue l\'elemento; HP persistenti; morte e rinascita; fame estrema.',
+  }] },
+  { version: 'v0.8', items: [{
+    en: 'Shop, potions, paid foods, weight.',
+    it: 'Negozio, pozioni, cibi a pagamento, peso.',
+  }] },
+  { version: 'v0.7', items: [{
+    en: 'Poop/potty, cuddle/spoiled, education/scold, rock-paper-scissors, info panel.',
+    it: 'Cacca/bagno, coccole/viziato, educazione/sgridate, carta-forbice-sasso, pannello info.',
+  }] },
+  { version: 'v0.6', items: [{
+    en: 'QR PvP battles, Rivals, coins, persistent HP economy.',
+    it: 'Battaglie PvP via QR, Rivali, monete, economia HP persistente.',
+  }] },
+  { version: 'v0.5', items: [{
+    en: 'Egg→adult growth, care loop, training, first battles.',
+    it: 'Crescita uovo→adulto, ciclo di cure, allenamento, prime battaglie.',
+  }] },
+];
 
 // Training config.
 const EXERCISES = {
@@ -333,6 +379,7 @@ export function showScreen(name) {
   if (name === 'train') refreshTrain();
   if (name === 'moves') refreshMoves();
   if (name === 'menu') refreshMenu();
+  if (name === 'changelog') renderChangelog();
   if (name === 'shop') refreshShop();
 }
 
@@ -749,12 +796,40 @@ export function doSleep() {
 }
 
 // Play = a quick Rock-Paper-Scissors minigame (see RPS section below).
+// v12: gated by CHARGES (3, +1 every 5 min). Refuse at 0 with a countdown toast;
+// otherwise consume a charge (start the 5-min timer if we were full) and open RPS.
 export function doPlay() {
   if (!requirePet()) return;
   const pet = state.pet;
+  refreshPlayCharges(pet);
+  if ((pet.playCharges || 0) <= 0) {
+    toast(t('toast.playNotReady', { time: fmtDuration(playChargeRemaining(pet)) }));
+    return;
+  }
+  if (pet.playCharges >= PLAY_MAX_CHARGES) pet.playRefillAt = Date.now() + PLAY_REFILL_MS;
+  pet.playCharges--;
   if (pet.sleeping) pet.sleeping = false;
-  // v6: playing no longer costs or requires stamina.
+  // v6: playing no longer costs or requires stamina (still otherwise free).
+  save();
+  refresh();
   openRps();
+}
+
+// Lazily refill play charges: +1 every PLAY_REFILL_MS, capped at max (mirrors refreshHealCharges).
+function refreshPlayCharges(pet) {
+  if (typeof pet.playCharges !== 'number') pet.playCharges = PLAY_MAX_CHARGES;
+  if (pet.playCharges >= PLAY_MAX_CHARGES) { pet.playRefillAt = 0; return; }
+  const now = Date.now();
+  while (pet.playCharges < PLAY_MAX_CHARGES && pet.playRefillAt && now >= pet.playRefillAt) {
+    pet.playCharges++;
+    pet.playRefillAt = pet.playCharges < PLAY_MAX_CHARGES ? pet.playRefillAt + PLAY_REFILL_MS : 0;
+  }
+}
+// Milliseconds until the next play charge (0 if a charge is available now).
+function playChargeRemaining(pet) {
+  refreshPlayCharges(pet);
+  if ((pet.playCharges || 0) > 0) return 0;
+  return Math.max(0, (pet.playRefillAt || 0) - Date.now());
 }
 
 // v6 — Heal (🩹) is ALWAYS FREE but limited to once every 4 hours. It never
@@ -1174,6 +1249,23 @@ function refreshBars() {
       if (label) label.textContent = t('action.healCharges', { n: charges, max: HEAL_MAX_CHARGES });
     }
   }
+  // v12: Play (🎈) button mirrors Heal — "Play {n}/3" when charges are available,
+  // disabled with a live "Play {time}" countdown when empty.
+  const playBtn = $('btn-play');
+  if (playBtn) {
+    refreshPlayCharges(pet);
+    const label = playBtn.querySelector('.act-label');
+    const charges = pet.playCharges || 0;
+    if (charges <= 0) {
+      playBtn.disabled = true;
+      playBtn.classList.add('disabled');
+      if (label) label.textContent = t('action.playCooldown', { time: fmtDuration(playChargeRemaining(pet)) });
+    } else {
+      playBtn.disabled = false;
+      playBtn.classList.remove('disabled');
+      if (label) label.textContent = t('action.playCharges', { n: charges, max: PLAY_MAX_CHARGES });
+    }
+  }
 }
 
 export function refresh() {
@@ -1318,8 +1410,22 @@ function refreshTrain() {
   });
 }
 
-// v5.1: on a successful session, the pet trots onto the training stage, does a
-// few workout reps, then trots off. Purely cosmetic (CSS-driven).
+// v12: both training animations play in a CENTERED MODAL overlay
+// (#train-anim-overlay, full-screen dark backdrop) rather than inline on the
+// training screen. show/hide is purely cosmetic and auto-dismisses.
+function showTrainOverlay() {
+  const ov = $('train-anim-overlay');
+  if (ov) ov.classList.add('open');
+}
+function hideTrainOverlay() {
+  const ov = $('train-anim-overlay');
+  if (ov) ov.classList.remove('open');
+  const stage = $('train-stage');
+  if (stage) stage.classList.remove('perform', 'refuse', 'show');
+}
+
+// v5.1: on a successful session, the pet trots onto the (now centered) stage,
+// does a few workout reps, then trots off. Purely cosmetic (CSS-driven).
 let trainAnimTimer = 0;
 function playTrainingAnim(name) {
   const stage = $('train-stage');
@@ -1330,11 +1436,12 @@ function playTrainingAnim(name) {
   const emo = $('train-emoji');
   const ex = EXERCISES[name];
   if (emo) emo.textContent = name === 'Special' ? '🌟' : (ex ? ex.emoji : '💪');
+  showTrainOverlay();
   stage.classList.remove('perform');
   void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
   stage.classList.add('show', 'perform');
   clearTimeout(trainAnimTimer);
-  trainAnimTimer = setTimeout(() => stage.classList.remove('perform', 'show'), 2600);
+  trainAnimTimer = setTimeout(hideTrainOverlay, 2600);
 }
 
 // v11: on a training refusal the pet trots on, shakes its head "no no" (angry
@@ -1348,11 +1455,12 @@ function playRefuseAnim() {
   renderPet(svg, pet.genome, pet.stage, { animate: false, element: pet.genome.element, mood: 'angry' });
   const emo = $('train-emoji');
   if (emo) emo.textContent = '🙅';
+  showTrainOverlay();
   stage.classList.remove('perform', 'refuse');
   void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
   stage.classList.add('show', 'refuse');
   clearTimeout(refuseAnimTimer);
-  refuseAnimTimer = setTimeout(() => stage.classList.remove('refuse', 'show'), 2200);
+  refuseAnimTimer = setTimeout(hideTrainOverlay, 2200);
 }
 
 // ---------------------------------------------------------------------------
@@ -1579,6 +1687,88 @@ function grantBattleResult(won, info) {
 function refreshMenu() {
   // v6: the notifications toggle lives on the Menu screen now (was in the Shop).
   updateNotifyButton();
+  // v12: version label (bottom-left of the Menu screen).
+  setText('menu-version', GAME_VERSION);
+}
+
+// v12 — Changelog view (#screen-changelog). Renders CHANGELOG newest-first with
+// localized headings; item text picks the active language (falls back to EN).
+function renderChangelog() {
+  setText('changelog-title', t('changelog.title'));
+  const back = $('btn-changelog-back');
+  if (back) back.textContent = t('changelog.back');
+  const listEl = $('changelog-list');
+  if (!listEl) return;
+  const lang = getLang();
+  listEl.innerHTML = '';
+  for (const entry of CHANGELOG) {
+    const block = document.createElement('div');
+    block.className = 'changelog-entry';
+    const head = document.createElement('div');
+    head.className = 'changelog-version';
+    head.textContent = entry.version;
+    block.appendChild(head);
+    for (const item of (entry.items || [])) {
+      const line = document.createElement('div');
+      line.className = 'changelog-item';
+      line.textContent = item[lang] || item.en || '';
+      block.appendChild(line);
+    }
+    listEl.appendChild(block);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v12 — Pet export / import (Menu). Export reveals a code + copies it to the
+// clipboard; import validates a pasted code and (after an in-page confirm)
+// OVERWRITES the current pet with it.
+// ---------------------------------------------------------------------------
+function doExportPet() {
+  const pet = state.pet;
+  if (!pet) return;
+  const code = exportPetCode(pet);
+  if (!code) { toast(t('menu.exportFailed')); return; }
+  const field = $('export-code');
+  if (field) {
+    field.style.display = '';
+    field.value = code;
+    field.focus();
+    field.select();
+  }
+  const done = () => toast(t('menu.petCopied'));
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(code).then(done).catch(() => {
+      try { if (field) { field.select(); document.execCommand('copy'); } } catch (e) { /* ignore */ }
+      done();
+    });
+  } else {
+    try { if (field) { field.select(); document.execCommand('copy'); } } catch (e) { /* ignore */ }
+    done();
+  }
+}
+
+function doImportPet() {
+  const input = $('import-code');
+  const raw = input ? input.value.trim() : '';
+  if (!raw) { toast(t('menu.importInvalid')); return; }
+  const imported = importPetCode(raw);
+  if (!imported) { toast(t('menu.importInvalid')); return; }
+  // Importing OVERWRITES the current pet — require an in-page confirm first.
+  openConfirm({
+    title: t('menu.importConfirmTitle'),
+    emoji: '📥',
+    lines: [t('menu.importConfirmBody', { name: imported.name })],
+    onConfirm: () => {
+      state.pet = imported;
+      save();
+      if (input) input.value = '';
+      const field = $('export-code');
+      if (field) { field.style.display = 'none'; field.value = ''; }
+      showScreen('pet');
+      refresh();
+      toast(t('menu.petLoaded'));
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1823,6 +2013,12 @@ export function initGame() {
     btn.addEventListener('click', () => doTrain(btn.dataset.ex));
   });
 
+  // v12: tapping the training-animation backdrop dismisses it early (cosmetic).
+  const trainOverlay = $('train-anim-overlay');
+  if (trainOverlay) trainOverlay.addEventListener('click', (e) => {
+    if (e.target === trainOverlay) hideTrainOverlay();
+  });
+
   // v11 — Moves management screen is now opened from the BATTLE menu (battle-ui).
   // Its Back button returns to the battle menu (falls back to the pet screen).
   bindClick('btn-moves-back', () => {
@@ -1864,6 +2060,14 @@ export function initGame() {
   });
   bindClick('btn-reset-cancel', disarmReset);
 
+  // v12: menu changelog ("📋 What's New") open/close.
+  bindClick('btn-changelog', () => showScreen('changelog'));
+  bindClick('btn-changelog-back', () => showScreen('menu'));
+
+  // v12: pet export / import.
+  bindClick('btn-export-pet', doExportPet);
+  bindClick('btn-import-pet', doImportPet);
+
   // populate menu name field
   const nameInput = $('menu-name');
   if (nameInput && state.pet) nameInput.value = state.pet.name;
@@ -1887,6 +2091,7 @@ export function initGame() {
     refreshMoves(); // re-apply Equip/Unequip + "Equipped n/4" labels
     refreshMenu(); // re-apply the (possibly cooldown) egg-button label
     refreshShop(); // re-apply shop coins + notification button label
+    if (state.screen === 'changelog') renderChangelog(); // v12: relocalize changelog
   });
   // First paint: fill all static data-i18n text and highlight the saved language.
   applyStaticI18n(document);
