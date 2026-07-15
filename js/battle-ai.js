@@ -14,46 +14,69 @@ const NOSES = ['none', 'dot', 'triangle'];
 const TAILS = ['none', 'nub', 'curl', 'fox'];
 const PATTERNS = ['none', 'spots', 'belly'];
 
-// Named move pools per element (DESIGN_v4.md §2). Index 0 = basic, later = stronger.
+// Named move pools per element (DESIGN_v11 "THE MOVES TABLE"). Each element has
+// exactly 4 moves in tier order: [basic, mid, strong, special].
 const MOVE_POOLS = {
-  none: ['Tackle', 'Slam', 'Bonk'],
-  water: ['Bubble', 'Aqua Jet', 'Tidal'],
-  fire: ['Ember', 'Flame', 'Blaze'],
-  grass: ['Vine', 'Leaf Blade', 'Bloom'],
-  earth: ['Pebble', 'Rock Toss', 'Quake'],
-  lightning: ['Spark', 'Zap', 'Bolt'],
-  dark: ['Shade', 'Umbra', 'Void'],
-  light: ['Glimmer', 'Flash', 'Radiance'],
+  none: ['Tackle', 'Slam', 'Protect', 'Explosion'],
+  water: ['Bubble', 'Aqua Jet', 'Tidal', 'Wave'],
+  fire: ['Ember', 'Flame', 'Scorch', 'Blaze'],
+  grass: ['Vine', 'Leaf Blade', 'Bloom', 'Healing Pollen'],
+  earth: ['Pebble', 'Rock Toss', 'Quake', 'Sand Attack'],
+  lightning: ['Spark', 'Zap', 'Bolt', 'Thunder'],
+  dark: ['Shade', 'Umbra', 'Void', 'Nightmare'],
+  light: ['Glimmer', 'Flash', 'Radiance', 'Beam'],
 };
 
-// v9 data-driven move stats (mirror of pet.js MOVE_STATS; battle-ai stays a
-// standalone module and does not import pet.js). Tier by pool position: basic
-// (pool[0], fast prio-1), mid (pool[1]), strong (pool[last]); 'none' gets a
-// small power boost since it's never super-effective.
-const TIER_STATS = {
-  basic:  { power: 0.9, cooldown: 0, priority: 1 },
-  mid:    { power: 1.4, cooldown: 1, priority: 0 },
-  strong: { power: 2.0, cooldown: 2, priority: 0 },
+// v11 data-driven move stats — a MIRROR of the DESIGN_v11 table (and of pet.js
+// MOVE_STATS; battle-ai stays standalone and does not import pet.js). The AI
+// power is the MIDPOINT of each move's [pMin,pMax] range. `cooldown` negative =
+// charge (|n| turns). `effect` matches the engine's effect encoding exactly.
+const MOVE_STATS = {
+  // none
+  Attack:           { element: 'none', power: 1.0,  cooldown: 0,  priority: 0 },
+  Tackle:           { element: 'none', power: 1.1,  cooldown: 0,  priority: 0 },
+  Slam:             { element: 'none', power: 1.3,  cooldown: 1,  priority: 0 },
+  Protect:          { element: 'none', power: 1.1,  cooldown: 2,  priority: 0, effect: { guard: 1.0 } },
+  Explosion:        { element: 'none', power: 2.7,  cooldown: 3,  priority: 0, effect: { recoil: 0.20 } },
+  // water
+  Bubble:           { element: 'water', power: 1.1,  cooldown: 0,  priority: 0 },
+  'Aqua Jet':       { element: 'water', power: 1.3,  cooldown: 1,  priority: 0, effect: { selfBuff: { def: 0.10 } } },
+  Tidal:            { element: 'water', power: 1.45, cooldown: 1,  priority: 0 },
+  Wave:             { element: 'water', power: 2.05, cooldown: -1, priority: 0, effect: { selfBuff: { def: -0.20 } } },
+  // fire
+  Ember:            { element: 'fire', power: 1.1,  cooldown: 0,  priority: 0 },
+  Flame:            { element: 'fire', power: 1.3,  cooldown: 0,  priority: 0 },
+  Scorch:           { element: 'fire', power: 1.05, cooldown: 1,  priority: 1 },
+  Blaze:            { element: 'fire', power: 1.45, cooldown: 1,  priority: 0, effect: { selfBuff: { str: 0.10 } } },
+  // grass
+  Vine:             { element: 'grass', power: 1.3,  cooldown: 1,  priority: 0 },
+  'Leaf Blade':     { element: 'grass', power: 1.45, cooldown: 1,  priority: 0 },
+  Bloom:            { element: 'grass', power: 1.35, cooldown: 1,  priority: 0, effect: { selfBuff: { spd: -0.40 }, heal: 0.10 } },
+  'Healing Pollen': { element: 'grass', power: 0,    cooldown: 2,  priority: 0, effect: { heal: 0.25, noDamage: true } },
+  // earth
+  Pebble:           { element: 'earth', power: 1.3,  cooldown: 1,  priority: 0 },
+  'Rock Toss':      { element: 'earth', power: 1.45, cooldown: 1,  priority: 0 },
+  Quake:            { element: 'earth', power: 1.8,  cooldown: 2,  priority: 0 },
+  'Sand Attack':    { element: 'earth', power: 1.8,  cooldown: 2,  priority: 0, effect: { enemyDebuff: { spd: -0.20 } } },
+  // lightning
+  Spark:            { element: 'lightning', power: 1.1,  cooldown: 0,  priority: 0 },
+  Zap:              { element: 'lightning', power: 1.3,  cooldown: 0,  priority: 0 },
+  Bolt:             { element: 'lightning', power: 1.45, cooldown: 0,  priority: 0 },
+  Thunder:          { element: 'lightning', power: 1.6,  cooldown: 2,  priority: 0, effect: { enemyDebuff: { str: -0.20 } } },
+  // dark
+  Shade:            { element: 'dark', power: 1.1,  cooldown: 0,  priority: 0 },
+  Umbra:            { element: 'dark', power: 1.3,  cooldown: 0,  priority: 0 },
+  Void:             { element: 'dark', power: 1.45, cooldown: 1,  priority: 0 },
+  Nightmare:        { element: 'dark', power: 1.45, cooldown: 2,  priority: 0, effect: { enemyDebuff: { str: -0.10, def: -0.10 } } },
+  // light
+  Glimmer:          { element: 'light', power: 1.1,  cooldown: 0,  priority: 0 },
+  Flash:            { element: 'light', power: 1.3,  cooldown: 0,  priority: 0 },
+  Radiance:         { element: 'light', power: 1.45, cooldown: 1,  priority: 0 },
+  Beam:             { element: 'light', power: 2.35, cooldown: -2, priority: 0 },
 };
-const TIER_STATS_NONE = {
-  basic:  { power: 1.0, cooldown: 0, priority: 1 },
-  mid:    { power: 1.6, cooldown: 1, priority: 0 },
-  strong: { power: 2.2, cooldown: 2, priority: 0 },
-};
-const MOVE_STATS = (() => {
-  const table = {};
-  for (const el of Object.keys(MOVE_POOLS)) {
-    const pool = MOVE_POOLS[el];
-    const tiers = el === 'none' ? TIER_STATS_NONE : TIER_STATS;
-    for (let i = 0; i < pool.length; i++) {
-      const tier = i === 0 ? 'basic' : (i === pool.length - 1 ? 'strong' : 'mid');
-      const t = tiers[tier];
-      table[pool[i]] = { element: el, power: t.power, cooldown: t.cooldown, priority: t.priority };
-    }
-  }
-  table.Attack = { element: 'none', power: 1.0, cooldown: 0, priority: 0 };
-  return table;
-})();
+
+// Tier label by pool index (0=basic,1=mid,2=strong,3=special).
+const TIER_NAMES = ['basic', 'mid', 'strong', 'special'];
 
 const STAGE_BY_LEVEL = (level) => {
   if (level <= 1) return 'baby';
@@ -102,34 +125,46 @@ function moveId(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
 }
 
+// Build a move object (with effect + charge cd) from the table for `name`.
+function makeMove(name, forceId) {
+  const s = MOVE_STATS[name] || { element: 'none', power: 1.0, cooldown: 0, priority: 0 };
+  const m = {
+    id: forceId || moveId(name),
+    name,
+    element: s.element,
+    power: s.power,
+    kind: 'attack',
+    cooldown: s.cooldown,
+    priority: s.priority,
+  };
+  if (s.effect) m.effect = JSON.parse(JSON.stringify(s.effect));
+  return m;
+}
+
 /**
- * Build a small typed moveset for a fighter of `element` (v9 cooldown/priority).
- * Always includes a basic Attack (none, power 1.0, cd0, prio0). Adds a FAST
- * low-power move (own-element basic, prio 1) and a STRONGER move with a 1-2 turn
- * cooldown (own-element mid or strong tier). All stats come from MOVE_STATS.
+ * Build a small typed moveset for a fighter of `element` (v11). Always includes
+ * a basic Attack (none, power 1.0, cd0). Adds the own-element BASIC move plus a
+ * STRONGER / EFFECT move rolled from the own-element {mid, strong, special}
+ * tiers — carrying its effect + charge encoding straight from MOVE_STATS.
  */
 export function generateMoveset(element, rng) {
   const el = element || 'none';
   const pool = MOVE_POOLS[el] || MOVE_POOLS.none;
   const moves = [{ id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 }];
 
-  // Fast low-power move: own-element basic (priority 1).
+  // Own-element BASIC move (pool[0]).
   {
-    const name = pool[0];
-    const s = MOVE_STATS[name];
-    const id = moveId(name);
-    if (!moves.some((m) => m.id === id)) {
-      moves.push({ id, name, element: s.element, power: s.power, kind: 'attack', cooldown: s.cooldown, priority: s.priority });
-    }
+    const m = makeMove(pool[0]);
+    if (!moves.some((x) => x.id === m.id)) moves.push(m);
   }
-  // Stronger move with a 1-2 turn cooldown: mid or strong tier (coin flip).
+  // A stronger / effect move: roll a tier among mid(1) / strong(2) / special(3).
   {
-    const useStrong = rng() < 0.5;
-    const name = useStrong ? pool[pool.length - 1] : pool[Math.min(1, pool.length - 1)];
-    const s = MOVE_STATS[name];
+    const r = rng();
+    const tierIdx = r < 0.4 ? 1 : (r < 0.75 ? 2 : 3);
+    const name = pool[Math.min(tierIdx, pool.length - 1)];
     let id = moveId(name);
-    if (moves.some((m) => m.id === id)) id = `${id}_2`;
-    moves.push({ id, name, element: s.element, power: s.power, kind: 'attack', cooldown: s.cooldown, priority: s.priority });
+    if (moves.some((x) => x.id === id)) id = `${id}_2`;
+    moves.push(makeMove(name, id));
   }
   return moves;
 }
@@ -222,11 +257,23 @@ export function pickAction(state, side, rng) {
   const moves = legal.length > 0 ? legal : all;
   const defElement = opp ? opp.element : 'none';
 
+  const hpFrac = (fighter.maxHp > 0) ? (fighter.hp / fighter.maxHp) : 1;
+
   let best = moves[0];
   let bestScore = -Infinity;
   for (const m of moves) {
-    const power = typeof m.power === 'number' && isFinite(m.power) ? m.power : 1.0;
-    const score = power * typeMult(m.element || 'none', defElement);
+    const eff = m.effect;
+    let score;
+    if (eff && eff.noDamage) {
+      // A no-damage utility move (e.g. Healing Pollen) scores ~0 normally, so
+      // the AI only reaches for it when hurt — then its heal fraction drives
+      // the score above the puny damage moves.
+      const healFrac = (eff && typeof eff.heal === 'number') ? eff.heal : 0;
+      score = hpFrac < 0.5 ? (0.5 + healFrac * 6) : 0.01;
+    } else {
+      const power = typeof m.power === 'number' && isFinite(m.power) ? m.power : 1.0;
+      score = power * typeMult(m.element || 'none', defElement);
+    }
     if (score > bestScore) {
       bestScore = score;
       best = m;

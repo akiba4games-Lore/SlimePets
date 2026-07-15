@@ -187,6 +187,32 @@ function actionLabel(actionId, snap) {
   return actionId ? actionId.charAt(0).toUpperCase() + actionId.slice(1) : String(actionId);
 }
 
+// Localized short stat token for effect lines (ATK/SPD/DEF…).
+function effStat(k) {
+  return t('effect.stat.' + k);
+}
+
+// Human-readable effect lines for a move — buffs/debuffs/heal/recoil/guard/charge
+// (DESIGN v11 "Effect encoding"). Negative cooldown means "charge |n|".
+function moveEffectLines(mv) {
+  const lines = [];
+  const fx = mv && mv.effect;
+  if (fx) {
+    if (fx.selfBuff) for (const [k, v] of Object.entries(fx.selfBuff)) {
+      lines.push(t('effect.selfBuff', { stat: effStat(k), sign: v >= 0 ? '+' : '−', pct: Math.abs(Math.round(v * 100)) }));
+    }
+    if (fx.enemyDebuff) for (const [k, v] of Object.entries(fx.enemyDebuff)) {
+      lines.push(t('effect.enemyDebuff', { stat: effStat(k), sign: v >= 0 ? '+' : '−', pct: Math.abs(Math.round(v * 100)) }));
+    }
+    if (typeof fx.heal === 'number' && fx.heal > 0) lines.push(t('effect.heal', { pct: Math.round(fx.heal * 100) }));
+    if (typeof fx.recoil === 'number' && fx.recoil > 0) lines.push(t('effect.recoil', { pct: Math.round(fx.recoil * 100) }));
+    if (fx.guard) lines.push(t('effect.guard'));
+    if (fx.noDamage) lines.push(t('effect.noDamage'));
+  }
+  if (mv && (mv.cooldown | 0) < 0) lines.push(t('effect.charge', { n: Math.abs(mv.cooldown | 0) }));
+  return lines;
+}
+
 // ---- "my" snapshot (real pet if available, else a standalone demo pet) ----
 
 function demoSnapshot() {
@@ -329,11 +355,16 @@ function renderMenu() {
   const joinCodeBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.joinCode'));
   joinCodeBtn.onclick = startJoinCodeFlow;
 
+  // v11 — the Moves management screen is reached from the battle menu.
+  const movesBtn = el('button', 'bui-btn bui-btn-secondary', t('moves.button'));
+  movesBtn.onclick = () => goToScreen('moves');
+
   wrap.appendChild(wildBtn);
   wrap.appendChild(rivalsBtn);
   wrap.appendChild(hostBtn);
   wrap.appendChild(joinQrBtn);
   wrap.appendChild(joinCodeBtn);
+  wrap.appendChild(movesBtn);
   root.appendChild(wrap);
 }
 
@@ -707,20 +738,27 @@ function runBattleScreen({ snapA, snapB, mySide, mode, engineSeed, net, bridge, 
     card.appendChild(el('div', 'bui-confirm-title', t('confirm.moveTitle', { move: `${icon} ${mv.name || mv.id}` })));
 
     const lines = el('div', 'bui-confirm-lines');
+    const noDmg = !!(mv.effect && mv.effect.noDamage);
     const elKey = ELEMENT_ICON[mv.element] ? mv.element : 'none';
     lines.appendChild(el('div', 'bui-confirm-line', `${ELEMENT_ICON[elKey]} ${t('element.' + elKey)}`));
-    lines.appendChild(el('div', 'bui-confirm-line', t('confirm.power', { power: (typeof mv.power === 'number' ? mv.power : 1).toFixed(2) })));
+    if (!noDmg) lines.appendChild(el('div', 'bui-confirm-line', t('confirm.power', { power: (typeof mv.power === 'number' ? mv.power : 1).toFixed(2) })));
     if ((mv.cooldown | 0) > 0) lines.appendChild(el('div', 'bui-confirm-line', t('confirm.cooldown', { n: mv.cooldown | 0 })));
     if ((mv.priority | 0) > 0) lines.appendChild(el('div', 'bui-confirm-line', t('confirm.fast')));
 
-    let mult = 1;
-    try { mult = typeMult(mv.element || 'none', oppEl); } catch (err) { console.error('[battle-ui] typeMult failed', err); }
-    const effLine = mult > 1
-      ? el('div', 'bui-confirm-line bui-eff-super', t('battle.eff.super'))
-      : (mult < 1
-        ? el('div', 'bui-confirm-line bui-eff-weak', t('battle.eff.weak'))
-        : el('div', 'bui-confirm-line', t('confirm.effNormal')));
-    lines.appendChild(effLine);
+    // v11 — surface the move's effects (buffs/debuffs/heal/recoil/guard/charge).
+    for (const ln of moveEffectLines(mv)) lines.appendChild(el('div', 'bui-confirm-line', ln));
+
+    // Effectiveness vs the opponent's element (skipped for no-damage moves).
+    if (!noDmg) {
+      let mult = 1;
+      try { mult = typeMult(mv.element || 'none', oppEl); } catch (err) { console.error('[battle-ui] typeMult failed', err); }
+      const effLine = mult > 1
+        ? el('div', 'bui-confirm-line bui-eff-super', t('battle.eff.super'))
+        : (mult < 1
+          ? el('div', 'bui-confirm-line bui-eff-weak', t('battle.eff.weak'))
+          : el('div', 'bui-confirm-line', t('confirm.effNormal')));
+      lines.appendChild(effLine);
+    }
     card.appendChild(lines);
 
     const actions = el('div', 'bui-confirm-actions');
@@ -788,6 +826,26 @@ function runBattleScreen({ snapA, snapB, mySide, mode, engineSeed, net, bridge, 
       }
       case 'charge': {
         appendLog(ev.text || t('battle.log.charges'));
+        break;
+      }
+      // v11 effect events emitted by the engine (text is engine-authored English;
+      // fall back to a localized generic line if absent).
+      case 'buff': {
+        appendLog(ev.text || t('battle.log.buff'));
+        break;
+      }
+      case 'debuff': {
+        appendLog(ev.text || t('battle.log.debuff'));
+        break;
+      }
+      case 'heal': {
+        updateHpBars();
+        appendLog(ev.text || t('battle.log.heals'));
+        break;
+      }
+      case 'recoil': {
+        updateHpBars();
+        appendLog(ev.text || t('battle.log.recoil'));
         break;
       }
       case 'special': {

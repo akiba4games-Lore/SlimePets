@@ -86,17 +86,24 @@ function clone(obj) {
 }
 
 // Back-compat: moves missing cooldown/priority (older snapshots) default to 0.
+// v11: preserve the optional `effect` object and keep NEGATIVE cooldowns as-is
+// (negative cd = a CHARGE move, |n| = charge turns — see makeFighter).
 function normalizeMoves(snap) {
   if (Array.isArray(snap.moves) && snap.moves.length > 0) {
-    return snap.moves.map((m) => ({
-      id: m.id,
-      name: m.name != null ? m.name : m.id,
-      element: m.element || 'none',
-      power: typeof m.power === 'number' && isFinite(m.power) ? m.power : 1.0,
-      kind: m.kind || 'attack',
-      cooldown: Number.isFinite(m.cooldown) ? Math.max(0, m.cooldown | 0) : 0,
-      priority: Number.isFinite(m.priority) ? (m.priority | 0) : 0,
-    }));
+    return snap.moves.map((m) => {
+      const nm = {
+        id: m.id,
+        name: m.name != null ? m.name : m.id,
+        element: m.element || 'none',
+        power: typeof m.power === 'number' && isFinite(m.power) ? m.power : 1.0,
+        kind: m.kind || 'attack',
+        // Keep negatives (charge encoding); only coerce non-finite to 0.
+        cooldown: Number.isFinite(m.cooldown) ? (m.cooldown | 0) : 0,
+        priority: Number.isFinite(m.priority) ? (m.priority | 0) : 0,
+      };
+      if (m.effect && typeof m.effect === 'object') nm.effect = clone(m.effect);
+      return nm;
+    });
   }
   return [clone(DEFAULT_MOVE)];
 }
@@ -109,13 +116,21 @@ function makeFighter(snap) {
   if (typeof snap.hpCurrent === 'number' && isFinite(snap.hpCurrent) && snap.hpCurrent > 0) {
     startHp = Math.min(maxHp, Math.floor(snap.hpCurrent));
   }
+  const moves = normalizeMoves(snap);            // back-compat: default single basic Attack
+  // v11 CHARGE: a move with a NEGATIVE cooldown starts the battle UNCHARGED —
+  // seed its cd map with |cooldown| so legalActions excludes it until it has
+  // ticked down to 0 (i.e. after |cooldown| turns).
+  const cd = {};
+  for (const m of moves) {
+    if ((m.cooldown | 0) < 0) cd[m.id] = -(m.cooldown | 0);
+  }
   return {
     name: snap.name,
     genome: clone(snap.genome),
     stage: snap.stage,
     level: snap.level,
     element: snap.element || 'none',       // back-compat: default 'none'
-    moves: normalizeMoves(snap),            // back-compat: default single basic Attack
+    moves,
     baseStats: { ...snap.stats },      // original stats, never mutated (for %-based effects)
     hp: startHp,
     maxHp,
@@ -124,9 +139,10 @@ function makeFighter(snap) {
     def: snap.stats.def,
     crit: snap.stats.crit,
     guarding: false,
+    guardFrac: 0,   // v11: fractional guard (Protect=1.0) active for the current turn
     specialUsed: false,
     fainted: false,
-    cd: {}, // v9: moveId -> cooldown turns remaining (serializable)
+    cd, // v9: moveId -> cooldown turns remaining (serializable); v11 seeds charge moves
   };
 }
 
@@ -210,7 +226,13 @@ function computeDamage(state, attacker, defender, move, events, side) {
 
   if (defender.guarding) base *= 0.5;
 
-  const dmg = Math.max(1, Math.round(base));
+  // v11 fractional guard (Protect): incoming damage ×(1−guardFrac) this turn.
+  // guardFrac >= 1 (Protect 1.0) fully blocks the hit → 0 damage (bypasses the
+  // usual min-1 floor); a partial guard still deals at least 1.
+  const gf = typeof defender.guardFrac === 'number' ? defender.guardFrac : 0;
+  if (gf > 0) base *= Math.max(0, 1 - gf);
+
+  const dmg = gf >= 1 ? 0 : Math.max(1, Math.round(base));
   defender.hp = Math.max(0, defender.hp - dmg);
 
   let text = `${attacker.name} hits for ${dmg}${isCrit ? ' (crit!)' : ''}`;
@@ -282,6 +304,87 @@ function decideWinnerByTimeout(state) {
   return pctA > pctB ? 'A' : 'B';
 }
 
+// Resolve a chosen action to the move object the fighter will actually use this
+// turn (v11). Non-move actions ('guard'/'special', retired) return null. If the
+// requested move is on cooldown (or an uncharged charge move), fall back to the
+// first available (cd 0) move — mirrors the legacy guard in the action loop.
+function resolveMove(fighter, action) {
+  if (action === 'guard' || action === 'special') return null;
+  const cd = fighter.cd || {};
+  let move = fighter.moves && fighter.moves.find((m) => m.id === action);
+  if (move && (cd[move.id] || 0) > 0) {
+    move = (fighter.moves && fighter.moves.find((m) => (cd[m.id] || 0) === 0)) || move;
+  }
+  if (!move) move = (fighter.moves && fighter.moves[0]) || DEFAULT_MOVE;
+  return move;
+}
+
+const STAT_LABEL = { str: 'ATK', spd: 'SPD', def: 'DEF' };
+
+// Apply fractional stat mods (selfBuff / enemyDebuff) multiplicatively on the
+// CURRENT stat, floor 1, persisting + stacking for the rest of the battle.
+// Returns readable "ATK +10%, DEF -20%" text, or '' if nothing changed.
+function applyStatMods(target, mods) {
+  const parts = [];
+  for (const stat of ['str', 'spd', 'def']) {
+    const delta = mods[stat];
+    if (typeof delta === 'number' && isFinite(delta) && delta !== 0) {
+      target[stat] = Math.max(1, Math.floor(target[stat] * (1 + delta)));
+      const pct = Math.round(delta * 100);
+      parts.push(`${STAT_LABEL[stat]} ${pct >= 0 ? '+' : ''}${pct}%`);
+    }
+  }
+  return parts.join(', ');
+}
+
+/**
+ * applyMoveEffects — resolve a move's `effect` payload in the DESIGN_v11 order
+ * (damage already dealt by the caller): (2) heal, (3) selfBuff, (4) enemyDebuff,
+ * (5) recoil, (6) guard flag/event. Emits readable buff/debuff/heal/recoil/guard
+ * events. The guard *damage reduction* is applied via guardFrac set up-front in
+ * applyTurn; here we only surface the event.
+ */
+function applyMoveEffects(fighter, opponent, move, events, side, oppSide) {
+  const eff = move.effect;
+  if (!eff || typeof eff !== 'object') return;
+
+  // (2) heal — user +heal×maxHp, capped at maxHp.
+  if (typeof eff.heal === 'number' && eff.heal > 0) {
+    const amount = Math.round(eff.heal * fighter.maxHp);
+    if (amount > 0) {
+      const before = fighter.hp;
+      fighter.hp = Math.min(fighter.maxHp, fighter.hp + amount);
+      const healed = fighter.hp - before;
+      events.push({ type: 'heal', side, amount: healed, text: `${fighter.name} recovers ${healed} HP!` });
+    }
+  }
+
+  // (3) selfBuff — user stats ×(1+delta), stacks, floor 1.
+  if (eff.selfBuff && typeof eff.selfBuff === 'object') {
+    const text = applyStatMods(fighter, eff.selfBuff);
+    if (text) events.push({ type: 'buff', side, text: `${fighter.name}: ${text}` });
+  }
+
+  // (4) enemyDebuff — opponent stats ×(1+delta), stacks, floor 1.
+  if (eff.enemyDebuff && typeof eff.enemyDebuff === 'object') {
+    const text = applyStatMods(opponent, eff.enemyDebuff);
+    if (text) events.push({ type: 'debuff', side: oppSide, text: `${opponent.name}: ${text}` });
+  }
+
+  // (5) recoil — user −recoil×maxHp AFTER damage, floor HP 1 (never self-KO).
+  if (typeof eff.recoil === 'number' && eff.recoil > 0) {
+    const amount = Math.max(1, Math.round(eff.recoil * fighter.maxHp));
+    fighter.hp = Math.max(1, fighter.hp - amount);
+    events.push({ type: 'recoil', side, amount, text: `${fighter.name} is hit by recoil (${amount})!` });
+  }
+
+  // (6) guard — flag already set for the turn (guardFrac); emit the event.
+  if (typeof eff.guard === 'number' && eff.guard > 0) {
+    const text = eff.guard >= 1 ? `${fighter.name} braces and blocks the hit!` : `${fighter.name} guards!`;
+    events.push({ type: 'guard', side, text });
+  }
+}
+
 /**
  * applyTurn(state, actionA, actionB) -> { state, events, winner }
  * An action is a move id (looked up in the fighter's moves), or 'guard', or
@@ -304,6 +407,13 @@ export function applyTurn(state, actionA, actionB) {
   // Reset guard flags each turn (guard only protects during the turn it's chosen)
   fA.guarding = actionA === 'guard';
   fB.guarding = actionB === 'guard';
+
+  // v11: pre-resolve the move each side will actually use (handles cd fallback),
+  // then set the fractional guard for the WHOLE turn so a Protect blocks the
+  // incoming hit regardless of turn order. Non-move actions resolve to null.
+  const resolved = { A: resolveMove(fA, actionA), B: resolveMove(fB, actionB) };
+  fA.guardFrac = resolved.A && resolved.A.effect && resolved.A.effect.guard > 0 ? resolved.A.effect.guard : 0;
+  fB.guardFrac = resolved.B && resolved.B.effect && resolved.B.effect.guard > 0 ? resolved.B.effect.guard : 0;
 
   // Turn order: v9 compare chosen moves' PRIORITY first (higher acts first) so a
   // prio-1 "quick" move beats a prio-0 move regardless of spd; tie on priority
@@ -342,17 +452,17 @@ export function applyTurn(state, actionA, actionB) {
         computeDamage(s, fighter, opponent, DEFAULT_MOVE, events, side);
       }
     } else {
-      // Treat as a move id: look it up in the fighter's moveset.
-      const cd = fighter.cd;
-      let move = fighter.moves && fighter.moves.find((m) => m.id === action);
-      // Guard: if the requested move is on cooldown (shouldn't happen), fall
-      // back to the fighter's first available (cd 0) move.
-      if (move && (cd[move.id] || 0) > 0) {
-        move = (fighter.moves && fighter.moves.find((m) => (cd[m.id] || 0) === 0)) || move;
-      }
-      if (!move) move = (fighter.moves && fighter.moves[0]) || DEFAULT_MOVE;
-      computeDamage(s, fighter, opponent, move, events, side);
-      if ((move.cooldown | 0) > 0) usedCdMove[side] = move;
+      // Treat as a move id: use the move pre-resolved for this side (already
+      // handles cooldown / uncharged-charge fallback).
+      const move = resolved[side] || (fighter.moves && fighter.moves[0]) || DEFAULT_MOVE;
+      // v11 resolution order: (1) noDamage skips damage, else deal damage;
+      // (2..6) heal / selfBuff / enemyDebuff / recoil / guard via applyMoveEffects.
+      const noDamage = !!(move.effect && move.effect.noDamage);
+      if (!noDamage) computeDamage(s, fighter, opponent, move, events, side);
+      if (move.effect) applyMoveEffects(fighter, opponent, move, events, side, opp);
+      // A charge move (negative cd) or a positive-cd move both re-lock; charge
+      // re-applies |cooldown| turns. Handled in end-of-turn bookkeeping below.
+      if ((move.cooldown | 0) !== 0) usedCdMove[side] = move;
     }
 
     const w = decideWinner(s);
@@ -372,7 +482,9 @@ export function applyTurn(state, actionA, actionB) {
   }
   for (const side of ['A', 'B']) {
     const m = usedCdMove[side];
-    if (m && (m.cooldown | 0) > 0) fighters[side].cd[m.id] = m.cooldown | 0;
+    // Positive cd re-locks for cd turns; negative cd (charge) re-charges for
+    // |cd| turns. Either way stamp the absolute value AFTER the decrement.
+    if (m && (m.cooldown | 0) !== 0) fighters[side].cd[m.id] = Math.abs(m.cooldown | 0);
   }
 
   if (!s.over) {

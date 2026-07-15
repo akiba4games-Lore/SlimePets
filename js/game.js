@@ -157,12 +157,54 @@ function unlockHint(unlock) {
     case 'always': return '';
     case 'level': return t('unlock.reachLv', { value: unlock.value });
     case 'trainings': return t('unlock.train', { value: unlock.value });
-    case 'weight': return t('unlock.weight', { value: unlock.value });
+    case 'weight': return unlock.cmp === 'lte'
+      ? t('unlock.weightLte', { value: unlock.value })
+      : t('unlock.weight', { value: unlock.value });
     case 'education': return t('unlock.education', { value: unlock.value });
     case 'wins': return t('unlock.wins', { value: unlock.value });
+    case 'scold': return t('unlock.scold', { value: unlock.value });
+    case 'cuddle': return t('unlock.cuddle', { value: unlock.value });
+    case 'game': return t('unlock.game', { value: unlock.value });
+    case 'healed': return t('unlock.healed', { value: unlock.value });
+    case 'losses': return t('unlock.losses', { value: unlock.value });
+    case 'spoiledEdu': return t('unlock.spoiledEdu');
+    case 'stat': return t('unlock.stat', { stat: t('stat.' + unlock.stat + '.full'), value: unlock.value });
     case 'stage': return t('unlock.stage', { stage: stageLabel(unlock.value) });
     default: return '';
   }
+}
+
+// The unlock hint only reveals itself after 1 real day since the pet hatched
+// (fallback: createdAt). Before that, locked moves show a mysterious placeholder.
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+function unlockRevealed(pet) {
+  const anchor = (pet && typeof pet.hatchedAt === 'number' && pet.hatchedAt)
+    ? pet.hatchedAt
+    : ((pet && pet.createdAt) || Date.now());
+  return Date.now() - anchor >= ONE_DAY_MS;
+}
+function lockedHintText(pet, unlock) {
+  return unlockRevealed(pet) ? unlockHint(unlock) : t('unlock.later');
+}
+
+// Localized short abbreviation for a buffed/debuffed stat (ATK/SPD/DEF...).
+function statAbbr(k) {
+  return t('effect.stat.' + k);
+}
+
+// Compact effect tag for the Moves screen / info panel (icon-forward, terse).
+function moveEffectTag(ab) {
+  const fx = ab && ab.effect;
+  const parts = [];
+  if (fx) {
+    if (fx.guard) parts.push('🛡️');
+    if (typeof fx.heal === 'number' && fx.heal > 0) parts.push('💚' + Math.round(fx.heal * 100) + '%');
+    if (typeof fx.recoil === 'number' && fx.recoil > 0) parts.push('💥' + Math.round(fx.recoil * 100) + '%');
+    if (fx.selfBuff) for (const [k, v] of Object.entries(fx.selfBuff)) parts.push((v >= 0 ? '▲' : '▼') + statAbbr(k));
+    if (fx.enemyDebuff) for (const [k] of Object.entries(fx.enemyDebuff)) parts.push('💢' + statAbbr(k));
+  }
+  if ((ab.cooldown | 0) < 0) parts.push('🔋' + Math.abs(ab.cooldown | 0));
+  return parts.join(' ');
 }
 
 // ---------------------------------------------------------------------------
@@ -604,6 +646,7 @@ export function doCuddle() {
   if (!requirePet()) return;
   const pet = state.pet;
   const c = pet.care;
+  pet.cuddleCount = (pet.cuddleCount || 0) + 1; // any cuddle counts (feeds 'cuddle' unlocks)
   const deserved = pet.lastAchievementAt > 0 && Date.now() - pet.lastAchievementAt <= ACHIEVEMENT_WINDOW_MS;
   if (deserved) {
     c.happiness = clamp(c.happiness + 15, 0, 100);
@@ -615,6 +658,7 @@ export function doCuddle() {
   }
   reaction('💗');
   bouncePet();
+  checkLearning(); // cuddle count may cross an unlock milestone
   afterAction('cuddle!');
 }
 
@@ -658,6 +702,7 @@ export function doScold() {
   const misValid = pet.lastMisbehaviorAt > 0 && now - pet.lastMisbehaviorAt <= MISBEHAVIOR_WINDOW_MS;
   const strikeValid = (pet.trainBlockUntil || 0) > now; // scolding ends a training strike
   if (poopValid || misValid || strikeValid) {
+    pet.scoldCount = (pet.scoldCount || 0) + 1; // valid scold (feeds 'scold' unlocks)
     pet.education = clamp(pet.education + 8, 0, 100);
     pet.spoiled = clamp(pet.spoiled - 10, 0, 100);
     c.happiness = clamp(c.happiness - 3, 0, 100);
@@ -725,10 +770,13 @@ export function doHeal() {
     return;
   }
   pet.lastFreeHealAt = Date.now();
+  const healed = Math.max(0, maxHp - (pet.hpCurrent || 0));
   pet.hpCurrent = maxHp;
+  pet.totalHealed = (pet.totalHealed || 0) + healed; // feeds 'healed' unlock (Healing Pollen)
   reaction('🩹');
   bouncePet();
   toast(t('toast.patchedUp', { name: pet.name }));
+  checkLearning(); // total healed may cross the SPECIAL_05 milestone
   afterAction('healed!');
 }
 
@@ -753,6 +801,12 @@ export function doTrain(name) {
       toast(t('toast.specialLocked', { name: pet.name }));
       return;
     }
+    // v11: Special training can be done only ONCE PER DAY.
+    const sinceSpecial = Date.now() - (pet.lastSpecialAt || 0);
+    if (sinceSpecial < ONE_DAY_MS) {
+      toast(t('toast.specialDailyLimit', { name: pet.name, time: fmtDuration(ONE_DAY_MS - sinceSpecial) }));
+      return;
+    }
   } else if (pet.stage === 'egg') {
     toast(t('toast.eggFirst'));
     return;
@@ -766,9 +820,9 @@ export function doTrain(name) {
     toast(t('toast.trainBlocked', { name: pet.name, time: fmtDuration(pet.trainBlockUntil - Date.now()) }));
     return;
   }
-  // v6.1/v10: per-exercise stamina cost — 20 for the basics, 100 for Special.
-  const staminaCost = isSpecial ? SPECIAL_STAMINA_COST : TRAIN_STAMINA_COST;
-  if (pet.stamina < staminaCost) {
+  // Basics cost a flat 20 stamina up front; Special drains the WHOLE bar on use
+  // (no minimum) and is instead limited to once per day (checked above).
+  if (!isSpecial && pet.stamina < TRAIN_STAMINA_COST) {
     toast(t('toast.tooTired', { name: pet.name }));
     return;
   }
@@ -789,10 +843,11 @@ export function doTrain(name) {
   // Cost: 100 stamina + halve happiness + halve HP (floor 1). No stat gain —
   // the move IS the reward.
   if (isSpecial) {
-    pet.stamina = clamp(pet.stamina - SPECIAL_STAMINA_COST, 0, pet.genome.maxStamina);
+    pet.stamina = 0; // special training drains the ENTIRE energy bar
     pet.care.happiness = clamp(pet.care.happiness * 0.5, 0, 100);
     const maxHp = computeStats(pet).hp;
     pet.hpCurrent = clamp(Math.floor((pet.hpCurrent || maxHp) * 0.5), 1, maxHp);
+    pet.lastSpecialAt = Date.now();
     const learned = learnRandomMove(pet);
     markAchievement();
     reaction('🌟');
@@ -928,7 +983,9 @@ export function playRps(choice) {
     msg = t('rps.tie');
   } else if (RPS_BEATS[choice] === petChoice) {
     c.happiness = clamp(c.happiness + 12, 0, 100);
+    pet.rpsWins = (pet.rpsWins || 0) + 1; // feeds 'game' unlocks
     markAchievement();
+    checkLearning(); // an RPS win may cross a 'game' unlock milestone
     msg = t('rps.win');
   } else {
     c.happiness = clamp(c.happiness + 4, 0, 100);
@@ -998,11 +1055,13 @@ function renderInfo() {
       .map((ab) => {
         const unlocked = known.has(ab.id);
         const ic = elementIcon(ab.element);
-        const pw = `×${ab.power.toFixed(2)}`;
-        const right = unlocked
-          ? `<span class="move-pw">${pw}</span>`
-          : `<span class="move-hint">🔒 ${unlockHint(ab.unlock)}</span>`;
-        return `<div class="move-item${unlocked ? '' : ' locked'}"><span class="move-ico">${ic}</span><span class="move-name">${ab.name}</span>${right}</div>`;
+        // Locked moves reveal ONLY their element — name/power/effect hidden (???).
+        if (!unlocked) {
+          return `<div class="move-item locked"><span class="move-ico">${ic}</span><span class="move-name">${t('moves.unknownName')}</span><span class="move-hint">🔒 ${lockedHintText(pet, ab.unlock)}</span></div>`;
+        }
+        const tag = moveEffectTag(ab);
+        const right = `<span class="move-pw">×${ab.power.toFixed(2)}${tag ? ' ' + tag : ''}</span>`;
+        return `<div class="move-item"><span class="move-ico">${ic}</span><span class="move-name">${ab.name}</span>${right}</div>`;
       })
       .join('');
   }
@@ -1219,10 +1278,16 @@ function refreshTrain() {
   const stageIdx = STAGE_ORDER.indexOf(pet.stage);
   document.querySelectorAll('.exercise').forEach((btn) => {
     if (btn.dataset.ex === 'Special') {
-      // v10: Special needs child+, 100 stamina, and is subject to the strike lock.
+      // v11: Special needs child+, drains the whole bar, and is once-per-day.
       const lockedStage = stageIdx < STAGE_ORDER.indexOf('child');
-      const tooTiredSp = pet.stamina < SPECIAL_STAMINA_COST;
-      btn.classList.toggle('disabled', blocked || lockedStage || tooTiredSp);
+      const sinceSpecial = Date.now() - (pet.lastSpecialAt || 0);
+      const usedToday = sinceSpecial < ONE_DAY_MS;
+      btn.classList.toggle('disabled', blocked || lockedStage || usedToday);
+      // Cost label reflects the once-a-day gate (remaining time when spent).
+      const costEl = btn.querySelector('.ex-cost');
+      if (costEl) costEl.textContent = usedToday
+        ? fmtDuration(ONE_DAY_MS - sinceSpecial)
+        : t('train.oncePerDay');
       return;
     }
     const ex = EXERCISES[btn.dataset.ex];
@@ -1258,6 +1323,8 @@ function moveMetaLine(ab) {
   const parts = [`×${ab.power.toFixed(2)}`];
   if ((ab.cooldown | 0) > 0) parts.push(`⏳${ab.cooldown | 0}`);
   if ((ab.priority | 0) > 0) parts.push('⚡');
+  const tag = moveEffectTag(ab);
+  if (tag) parts.push(tag);
   return parts.join('   ');
 }
 
@@ -1297,9 +1364,10 @@ function refreshMoves() {
     locked.forEach((ab) => {
       const row = document.createElement('div');
       row.className = 'move-manage-row locked';
+      // Locked moves reveal ONLY their element — name/power/effect hidden (???).
       row.innerHTML = `<span class="mm-ico">${elementIcon(ab.element)}</span>`
-        + `<span class="mm-body"><span class="mm-name">${ab.name}</span><span class="mm-sub">×${ab.power.toFixed(2)}</span></span>`
-        + `<span class="mm-hint">🔒 ${unlockHint(ab.unlock)}</span>`;
+        + `<span class="mm-body"><span class="mm-name">${t('moves.unknownName')}</span></span>`
+        + `<span class="mm-hint">🔒 ${lockedHintText(pet, ab.unlock)}</span>`;
       lockedEl.appendChild(row);
     });
   }
@@ -1424,6 +1492,7 @@ function grantBattleResult(won, info) {
   info = info || {};
   const leveled = grantBattleXp(pet, won);
   const maxHp = computeStats(pet).hp;
+  const hpBefore = (typeof pet.hpCurrent === 'number' && isFinite(pet.hpCurrent)) ? pet.hpCurrent : maxHp;
 
   // HP writeback (DESIGN v4 §4 — updated rule):
   //  win / draw ⇒ keep the ACTUAL in-battle HP the fighter walked away with.
@@ -1432,12 +1501,16 @@ function grantBattleResult(won, info) {
     if (typeof info.remainingHp === 'number' && isFinite(info.remainingHp)) {
       pet.hpCurrent = clamp(info.remainingHp, 1, maxHp);
     }
+    // In-battle heal effects (Healing Pollen / Bloom) can leave the fighter with
+    // MORE HP than it started; count that positive delta toward totalHealed.
+    if (pet.hpCurrent > hpBefore) pet.totalHealed = (pet.totalHealed || 0) + (pet.hpCurrent - hpBefore);
     if (info.draw && !won) {
       // draw: no happiness penalty
     }
   } else {
     pet.hpCurrent = Math.max(1, Math.round(0.05 * maxHp));
     pet.care.happiness = clamp(pet.care.happiness - 15, 0, 100);
+    pet.battleLosses = (pet.battleLosses || 0) + 1; // feeds 'losses' unlock (Explosion)
   }
 
   let coins = 0;
@@ -1485,9 +1558,12 @@ function doBuyCure() {
   const maxHp = computeStats(pet).hp;
   if (pet.hpCurrent >= maxHp) { toast(t('toast.fullHealth')); return; }
   pet.coins -= CURE_COST;
+  const healed = Math.max(0, maxHp - (pet.hpCurrent || 0));
   pet.hpCurrent = maxHp;
+  pet.totalHealed = (pet.totalHealed || 0) + healed; // feeds 'healed' unlock
   reaction('❤️');
   toast(t('shop.boughtCure', { name: pet.name }));
+  checkLearning();
   refreshShop();
   refresh();
   save();
@@ -1707,9 +1783,12 @@ export function initGame() {
     btn.addEventListener('click', () => doTrain(btn.dataset.ex));
   });
 
-  // v10 — Moves management screen (opened from Training)
-  bindClick('btn-moves', () => showScreen('moves'));
-  bindClick('btn-moves-back', () => showScreen('train'));
+  // v11 — Moves management screen is now opened from the BATTLE menu (battle-ui).
+  // Its Back button returns to the battle menu (falls back to the pet screen).
+  bindClick('btn-moves-back', () => {
+    if (window.SlimeBattle && typeof window.SlimeBattle.openMenu === 'function') window.SlimeBattle.openMenu();
+    else showScreen('pet');
+  });
 
   // v8 — confirm popup (food + general). Confirm runs the stored action; Cancel
   // or a backdrop tap just closes (the picker underneath stays open).

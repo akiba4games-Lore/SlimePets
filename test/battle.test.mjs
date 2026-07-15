@@ -459,6 +459,112 @@ for (let i = 0; i < NUM_BATTLES; i++) {
   assertTrue(state.over, 'back-compat: battle concluded');
 }
 
+// ---------------------------------------------------------------------------
+// v11 EFFECTS. Shared helpers: build a fighter snapshot with an explicit
+// moveset + stats; opponents get huge HP so a battle never ends mid-test.
+// ---------------------------------------------------------------------------
+const ATTACK = { id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 };
+function snap(name, moves, stats, extra = {}) {
+  return { name, stage: 'adult', level: 10, genome: { bodyShape: 'blob', seed: 1 }, element: 'none', moves, stats, ...extra };
+}
+const BIG = { hp: 999999, str: 8, spd: 8, def: 5, crit: 0 }; // crit 0 -> no crit variance in these checks
+const dummy = () => snap('Dummy', [ATTACK], { ...BIG });
+
+// --- selfBuff persists + STACKS across turns -------------------------------
+{
+  const buffMove = { id: 'buffup', name: 'PowerUp', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0, effect: { selfBuff: { str: 0.5 } } };
+  const A = snap('Buffer', [ATTACK, buffMove], { hp: 999999, str: 20, spd: 50, def: 5, crit: 0 });
+  let state = createBattle(A, dummy(), 0x5EED);
+  assertTrue(state.A.str === 20, `selfBuff: base str 20 (got ${state.A.str})`);
+
+  const r1 = applyTurn(state, 'buffup', 'attack');
+  state = r1.state;
+  assertTrue(state.A.str === 30, `selfBuff: str 20 ->30 after one +50% (got ${state.A.str})`);
+  assertTrue(r1.events.some((e) => e.type === 'buff' && e.side === 'A'), 'selfBuff: emits a buff event on the user side');
+
+  const r2 = applyTurn(state, 'buffup', 'attack');
+  state = r2.state;
+  assertTrue(state.A.str === 45, `selfBuff: STACKS 30 ->45 after a second +50% (got ${state.A.str})`);
+}
+
+// --- enemyDebuff lowers the OPPONENT ---------------------------------------
+{
+  const debuffMove = { id: 'slow', name: 'Slow', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0, effect: { enemyDebuff: { spd: -0.5 } } };
+  const A = snap('Debuffer', [ATTACK, debuffMove], { hp: 999999, str: 12, spd: 50, def: 5, crit: 0 });
+  const B = snap('Target', [ATTACK], { hp: 999999, str: 8, spd: 20, def: 5, crit: 0 });
+  const r = applyTurn(createBattle(A, B, 0xD00D), 'slow', 'attack');
+  assertTrue(r.state.B.spd === 10, `enemyDebuff: opponent spd 20 ->10 (-50%) (got ${r.state.B.spd})`);
+  assertTrue(r.events.some((e) => e.type === 'debuff' && e.side === 'B'), 'enemyDebuff: emits a debuff event targeting the opponent side');
+}
+
+// --- heal + noDamage (Healing Pollen): heals, deals NO damage ---------------
+{
+  const pollen = { id: 'pollen', name: 'Healing Pollen', element: 'grass', power: 0, kind: 'attack', cooldown: 2, priority: 0, effect: { heal: 0.25, noDamage: true } };
+  const A = snap('Medic', [ATTACK, pollen], { hp: 100, str: 12, spd: 50, def: 5, crit: 0 }, { hpCurrent: 40 });
+  const B = snap('Punchbag', [ATTACK], { hp: 999999, str: 1, spd: 8, def: 5, crit: 0 });
+  const r = applyTurn(createBattle(A, B, 0xBEE5), 'pollen', 'attack');
+  const healEv = r.events.find((e) => e.type === 'heal' && e.side === 'A');
+  assertTrue(healEv && healEv.amount === 25, `heal: Healing Pollen heals 25 of 100 maxHp (got ${healEv && healEv.amount})`);
+  assertTrue(!r.events.some((e) => (e.type === 'hit' || e.type === 'crit') && e.side === 'A'), 'noDamage: A deals no damage this turn');
+  assertTrue(r.state.B.hp === r.state.B.maxHp, `noDamage: opponent HP untouched (got ${r.state.B.hp}/${r.state.B.maxHp})`);
+}
+
+// --- recoil floored >=1 AND never self-KO ----------------------------------
+{
+  // (a) tiny fraction rounds below 1 but is floored to 1.
+  const tinyRecoil = { id: 'tr', name: 'TinyRecoil', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0, effect: { recoil: 0.10 } };
+  const A = snap('Reckless', [tinyRecoil], { hp: 4, str: 12, spd: 50, def: 5, crit: 0 });
+  const r = applyTurn(createBattle(A, dummy(), 0x1111), 'tr', 'attack');
+  const rec = r.events.find((e) => e.type === 'recoil' && e.side === 'A');
+  assertTrue(rec && rec.amount === 1, `recoil: 0.10x4=0.4 floored to >=1 (got ${rec && rec.amount})`);
+
+  // (b) huge recoil can drop the user to exactly 1 HP but NEVER KOs them.
+  const bigRecoil = { id: 'br', name: 'BigRecoil', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0, effect: { recoil: 0.99 } };
+  // A acts LAST (low spd) so the opponent's small hit lands first; recoil then
+  // floors A at 1 rather than KO'ing.
+  const A2 = snap('Kamikaze', [bigRecoil], { hp: 100, str: 12, spd: 1, def: 50, crit: 0 }, { hpCurrent: 50 });
+  const B2 = snap('Weakling', [ATTACK], { hp: 999999, str: 1, spd: 99, def: 5, crit: 0 });
+  const r2 = applyTurn(createBattle(A2, B2, 0x2222), 'br', 'attack');
+  assertTrue(r2.state.A.hp === 1, `recoil: never self-KO, floored to 1 HP (got ${r2.state.A.hp})`);
+  assertTrue(r2.state.A.fainted === false, 'recoil: user did not faint');
+  assertTrue(r2.winner !== 'B', 'recoil: recoil alone does not hand the win to the opponent');
+}
+
+// --- guard blocks the incoming hit this turn (Protect, guard 1.0) ----------
+{
+  const protect = { id: 'protect', name: 'Protect', element: 'none', power: 1.1, kind: 'attack', cooldown: 2, priority: 0, effect: { guard: 1.0 } };
+  const A = snap('Guardian', [ATTACK, protect], { hp: 999999, str: 20, spd: 50, def: 5, crit: 0 });
+  const B = snap('Attacker', [ATTACK], { hp: 999999, str: 40, spd: 8, def: 5, crit: 0 });
+  const r = applyTurn(createBattle(A, B, 0x6A6D), 'protect', 'attack');
+  const bHit = r.events.find((e) => (e.type === 'hit' || e.type === 'crit') && e.side === 'B'); // B's hit onto A
+  const aHit = r.events.find((e) => (e.type === 'hit' || e.type === 'crit') && e.side === 'A'); // Protect still deals damage
+  assertTrue(bHit && bHit.dmg === 0, `guard: Protect fully blocks the opponent's hit (got dmg ${bHit && bHit.dmg})`);
+  assertTrue(r.state.A.hp === r.state.A.maxHp, `guard: protected fighter takes 0 damage (got ${r.state.A.hp}/${r.state.A.maxHp})`);
+  assertTrue(aHit && aHit.dmg > 0, `guard: Protect ALSO deals its own damage (got ${aHit && aHit.dmg})`);
+  assertTrue(r.events.some((e) => e.type === 'guard' && e.side === 'A'), 'guard: emits a guard event');
+}
+
+// --- CHARGE move (negative cd): unusable until charged, re-charges after use -
+{
+  const beam = { id: 'beam', name: 'Beam', element: 'light', power: 2.35, kind: 'attack', cooldown: -2, priority: 0 };
+  const A = snap('Charger', [ATTACK, beam], { hp: 999999, str: 20, spd: 50, def: 5, crit: 0 });
+  let state = createBattle(A, dummy(), 0xC0DE);
+  assertTrue(state.A.cd.beam === 2, `charge: makeFighter seeds cd=|−2|=2 uncharged (got ${state.A.cd.beam})`);
+  assertTrue(!legalActions(state, 'A').includes('beam'), 'charge: Beam not usable while uncharged (turn 0)');
+
+  state = applyTurn(state, 'attack', 'attack').state; // charge tick 1: cd 2 -> 1
+  assertTrue(!legalActions(state, 'A').includes('beam'), 'charge: still charging after 1 turn');
+
+  state = applyTurn(state, 'attack', 'attack').state; // charge tick 2: cd 1 -> 0
+  assertTrue(legalActions(state, 'A').includes('beam'), 'charge: Beam usable once fully charged (after 2 turns)');
+
+  const rFire = applyTurn(state, 'beam', 'attack'); // fire it
+  assertTrue(rFire.events.some((e) => (e.type === 'hit' || e.type === 'crit') && e.side === 'A'), 'charge: firing Beam deals damage');
+  state = rFire.state;
+  assertTrue(state.A.cd.beam === 2, `charge: re-applies |−2|=2 after firing (got ${state.A.cd.beam})`);
+  assertTrue(!legalActions(state, 'A').includes('beam'), 'charge: Beam back on charge after use');
+}
+
 console.log(`\n${passed} assertions passed, ${failures} failed (over ${NUM_BATTLES} battles).`);
 
 if (failures > 0) {

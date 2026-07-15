@@ -197,102 +197,181 @@ export const EGG_HATCH_MS = 2 * 60 * 1000; // ~2 min of app-open time
 export const EGG_HATCH_TAPS = 5;
 
 // ---------------------------------------------------------------------------
-// Abilities / learnset (DESIGN v4 §2)
+// Abilities / learnset (DESIGN v11 — "THE MOVES TABLE")
 // ---------------------------------------------------------------------------
-// Named move pool per element. slot 1 = basic (pool[0]); slot 2 = strongest
-// (pool[last]); they are always distinct names within a pool.
-const MOVE_POOLS = {
-  water: ['Bubble', 'Aqua Jet', 'Tidal'],
-  fire: ['Ember', 'Flame', 'Blaze'],
-  grass: ['Vine', 'Leaf Blade', 'Bloom'],
-  earth: ['Pebble', 'Rock Toss', 'Quake'],
-  lightning: ['Spark', 'Zap', 'Bolt'],
-  dark: ['Shade', 'Umbra', 'Void'],
-  light: ['Glimmer', 'Flash', 'Radiance'],
-  none: ['Tackle', 'Slam', 'Bonk'],
+// Each element has EXACTLY 4 moves: basic / mid / strong / special. Every move
+// carries a per-pet power RANGE [powerMin,powerMax] (C-data rolls one fixed
+// value per pet from the seed), a cooldown (NEGATIVE = charge: |n| turns to
+// charge), a priority, and an optional `effect` (see DESIGN "Effect encoding").
+// `learn` tags how it unlocks (see the Learnset section below). This table +
+// effect encoding MUST match js/battle-ai.js / the engine EXACTLY.
+const MOVE_TABLE = [
+  // element, name, tier, powerMin, powerMax, cooldown, priority, effect, learn
+  { element: 'none', name: 'Attack', tier: 'univ', powerMin: 1.0, powerMax: 1.0, cooldown: 0, priority: 0, effect: null, learn: 'always' },
+  { element: 'none', name: 'Tackle', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
+  { element: 'none', name: 'Slam', tier: 'mid', powerMin: 1.2, powerMax: 1.4, cooldown: 1, priority: 0, effect: null, learn: 'medium' },
+  { element: 'none', name: 'Protect', tier: 'strong', powerMin: 1.0, powerMax: 1.2, cooldown: 2, priority: 0, effect: { guard: 1.0 }, learn: 'hard' },
+  { element: 'none', name: 'Explosion', tier: 'special', powerMin: 2.4, powerMax: 3.0, cooldown: 3, priority: 0, effect: { recoil: 0.20 }, learn: 'SPECIAL_08' },
+
+  { element: 'water', name: 'Bubble', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
+  { element: 'water', name: 'Aqua Jet', tier: 'mid', powerMin: 1.2, powerMax: 1.4, cooldown: 1, priority: 0, effect: { selfBuff: { def: 0.10 } }, learn: 'medium' },
+  { element: 'water', name: 'Tidal', tier: 'strong', powerMin: 1.3, powerMax: 1.6, cooldown: 1, priority: 0, effect: null, learn: 'hard' },
+  { element: 'water', name: 'Wave', tier: 'special', powerMin: 1.9, powerMax: 2.2, cooldown: -1, priority: 0, effect: { selfBuff: { def: -0.20 } }, learn: 'SPECIAL_04' },
+
+  { element: 'fire', name: 'Ember', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
+  { element: 'fire', name: 'Flame', tier: 'mid', powerMin: 1.2, powerMax: 1.4, cooldown: 0, priority: 0, effect: null, learn: 'medium' },
+  { element: 'fire', name: 'Scorch', tier: 'strong', powerMin: 1.0, powerMax: 1.1, cooldown: 1, priority: 1, effect: null, learn: 'hard' },
+  { element: 'fire', name: 'Blaze', tier: 'special', powerMin: 1.3, powerMax: 1.6, cooldown: 1, priority: 0, effect: { selfBuff: { str: 0.10 } }, learn: 'SPECIAL_02' },
+
+  { element: 'grass', name: 'Vine', tier: 'basic', powerMin: 1.2, powerMax: 1.4, cooldown: 1, priority: 0, effect: null, learn: 'easy' },
+  { element: 'grass', name: 'Leaf Blade', tier: 'mid', powerMin: 1.3, powerMax: 1.6, cooldown: 1, priority: 0, effect: null, learn: 'medium' },
+  { element: 'grass', name: 'Bloom', tier: 'strong', powerMin: 1.2, powerMax: 1.5, cooldown: 1, priority: 0, effect: { selfBuff: { spd: -0.40 }, heal: 0.10 }, learn: 'hard' },
+  { element: 'grass', name: 'Healing Pollen', tier: 'special', powerMin: 0, powerMax: 0, cooldown: 2, priority: 0, effect: { heal: 0.25, noDamage: true }, learn: 'SPECIAL_05' },
+
+  { element: 'earth', name: 'Pebble', tier: 'basic', powerMin: 1.2, powerMax: 1.4, cooldown: 1, priority: 0, effect: null, learn: 'easy' },
+  { element: 'earth', name: 'Rock Toss', tier: 'mid', powerMin: 1.3, powerMax: 1.6, cooldown: 1, priority: 0, effect: null, learn: 'medium' },
+  { element: 'earth', name: 'Quake', tier: 'strong', powerMin: 1.6, powerMax: 2.0, cooldown: 2, priority: 0, effect: null, learn: 'hard' },
+  { element: 'earth', name: 'Sand Attack', tier: 'special', powerMin: 1.6, powerMax: 2.0, cooldown: 2, priority: 0, effect: { enemyDebuff: { spd: -0.20 } }, learn: 'SPECIAL_04' },
+
+  { element: 'lightning', name: 'Spark', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
+  { element: 'lightning', name: 'Zap', tier: 'mid', powerMin: 1.2, powerMax: 1.4, cooldown: 0, priority: 0, effect: null, learn: 'medium' },
+  { element: 'lightning', name: 'Bolt', tier: 'strong', powerMin: 1.3, powerMax: 1.6, cooldown: 0, priority: 0, effect: null, learn: 'hard' },
+  { element: 'lightning', name: 'Thunder', tier: 'special', powerMin: 1.5, powerMax: 1.7, cooldown: 2, priority: 0, effect: { enemyDebuff: { str: -0.20 } }, learn: 'SPECIAL_03' },
+
+  { element: 'dark', name: 'Shade', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
+  { element: 'dark', name: 'Umbra', tier: 'mid', powerMin: 1.2, powerMax: 1.4, cooldown: 0, priority: 0, effect: null, learn: 'medium' },
+  { element: 'dark', name: 'Void', tier: 'strong', powerMin: 1.3, powerMax: 1.6, cooldown: 1, priority: 0, effect: null, learn: 'hard' },
+  { element: 'dark', name: 'Nightmare', tier: 'special', powerMin: 1.3, powerMax: 1.6, cooldown: 2, priority: 0, effect: { enemyDebuff: { str: -0.10, def: -0.10 } }, learn: 'SPECIAL_06' },
+
+  { element: 'light', name: 'Glimmer', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
+  { element: 'light', name: 'Flash', tier: 'mid', powerMin: 1.2, powerMax: 1.4, cooldown: 0, priority: 0, effect: null, learn: 'medium' },
+  { element: 'light', name: 'Radiance', tier: 'strong', powerMin: 1.3, powerMax: 1.6, cooldown: 1, priority: 0, effect: null, learn: 'hard' },
+  { element: 'light', name: 'Beam', tier: 'special', powerMin: 2.2, powerMax: 2.5, cooldown: -2, priority: 0, effect: null, learn: 'SPECIAL_07' },
+];
+
+// SPECIAL unlock conditions (FIXED per the element's special move). SPECIAL_01
+// (HP>=60) is defined but currently unassigned to a move — kept available.
+const SPECIAL_CONDS = {
+  SPECIAL_01: { type: 'stat', stat: 'hp', value: 60 },
+  SPECIAL_02: { type: 'stat', stat: 'str', value: 30 },
+  SPECIAL_03: { type: 'stat', stat: 'spd', value: 30 },
+  SPECIAL_04: { type: 'stat', stat: 'def', value: 30 },
+  SPECIAL_05: { type: 'healed', value: 1000 },
+  SPECIAL_06: { type: 'stat', stat: 'crit', value: 30 },
+  SPECIAL_07: { type: 'spoiledEdu' },
+  SPECIAL_08: { type: 'losses', value: 50 },
 };
 
-// v9/v10: DATA-DRIVEN per-move stats. Each named move has fixed
-// element/power/cooldown/priority (no per-pet jitter) so balance is predictable
-// and easy to tweak. Tier by pool position: basic (pool[0], fast prio-1),
-// mid (pool[1]), strong (pool[last]). 'none' moves get a small power boost since
-// they can never be super-effective.
-const TIER_STATS = {
-  basic:  { power: 0.9, cooldown: 0, priority: 1 },
-  mid:    { power: 1.4, cooldown: 1, priority: 0 },
-  strong: { power: 2.0, cooldown: 2, priority: 0 },
+// CONDITION POOLS (checkUnlocks). getLearnset pulls ONE at random (by seed) from
+// the tier's list and freezes it as that move's fixed unlock condition.
+const COND_POOLS = {
+  easy: [
+    { type: 'level', value: 3 }, { type: 'wins', value: 3 }, { type: 'trainings', value: 5 },
+    { type: 'scold', value: 3 }, { type: 'cuddle', value: 3 }, { type: 'game', value: 3 },
+    { type: 'stage', value: 'child' },
+  ],
+  medium: [
+    { type: 'level', value: 8 }, { type: 'wins', value: 15 }, { type: 'trainings', value: 20 },
+    { type: 'education', value: 30 }, { type: 'scold', value: 10 }, { type: 'cuddle', value: 10 },
+    { type: 'game', value: 30 }, { type: 'weight', value: 40, cmp: 'gte' }, { type: 'stage', value: 'teen' },
+  ],
+  hard: [
+    { type: 'level', value: 12 }, { type: 'wins', value: 25 }, { type: 'trainings', value: 40 },
+    { type: 'education', value: 50 }, { type: 'scold', value: 20 }, { type: 'cuddle', value: 20 },
+    { type: 'game', value: 60 }, { type: 'weight', value: 20, cmp: 'lte' }, { type: 'stage', value: 'adult' },
+  ],
 };
-const TIER_STATS_NONE = {
-  basic:  { power: 1.0, cooldown: 0, priority: 1 },
-  mid:    { power: 1.6, cooldown: 1, priority: 0 },
-  strong: { power: 2.2, cooldown: 2, priority: 0 },
-};
+const TIER_POOL = { basic: 'easy', mid: 'medium', strong: 'hard' };
 
-// The single source of truth for move stats, built from the pools + tiers and
-// keyed by move name (names are unique across pools). getLearnset, rerollMove,
-// learnRandomMove and battleSnapshot all resolve their stats from HERE.
+// The single source of truth for move stats, keyed by move name (names unique).
+// getLearnset, rerollMove, learnRandomMove and battleSnapshot resolve from HERE.
 export const MOVE_STATS = (() => {
   const table = {};
-  for (const el of Object.keys(MOVE_POOLS)) {
-    const pool = MOVE_POOLS[el];
-    const tiers = el === 'none' ? TIER_STATS_NONE : TIER_STATS;
-    for (let i = 0; i < pool.length; i++) {
-      const tier = i === 0 ? 'basic' : (i === pool.length - 1 ? 'strong' : 'mid');
-      const t = tiers[tier];
-      table[pool[i]] = { element: el, power: t.power, cooldown: t.cooldown, priority: t.priority };
-    }
+  for (const m of MOVE_TABLE) {
+    table[m.name] = {
+      element: m.element,
+      tier: m.tier,
+      powerMin: m.powerMin,
+      powerMax: m.powerMax,
+      cooldown: m.cooldown,
+      priority: m.priority,
+      effect: m.effect || null,
+      learn: m.learn,
+      special: (typeof m.learn === 'string' && m.learn.indexOf('SPECIAL_') === 0) ? SPECIAL_CONDS[m.learn] : null,
+    };
   }
-  // Universal Attack: reliable neutral, always usable.
-  table.Attack = { element: 'none', power: 1.0, cooldown: 0, priority: 0 };
   return table;
 })();
 
-// v10 unlock CONDITIONS per learnset slot (the strong nuke's is drawn per-pet
-// from RANDOM_UNLOCK_POOL). The learnset assigns WHICH named move unlocks at
-// WHICH condition; the move's power/cd/priority come from MOVE_STATS.
-const SLOT_UNLOCKS = {
-  attack:   { type: 'always' },
-  quick:    { type: 'wins', value: 5 },       // 2nd: own-element basic
-  medium:   { type: 'stage', value: 'child' }, // 3rd: own-element mid
-  second:   { type: 'level', value: 6 },       // 5th: 2nd-element mid
-  offheavy: { type: 'wins', value: 20 },       // 6th: off-element strong
-};
+// element -> tier -> move name.
+const MOVE_BY_EL_TIER = (() => {
+  const map = {};
+  for (const m of MOVE_TABLE) {
+    if (m.tier === 'univ') continue;
+    if (!map[m.element]) map[m.element] = {};
+    map[m.element][m.tier] = m.name;
+  }
+  return map;
+})();
 
-// {type:'random'} resolves (deterministically per seed) to ONE of these, so each
-// pet unlocks its big move at a different, surprising milestone.
-const RANDOM_UNLOCK_POOL = [
-  { type: 'level', value: 5 },
-  { type: 'wins', value: 15 },
-  { type: 'education', value: 60 },
-  { type: 'weight', value: 70 },
-  { type: 'trainings', value: 5 },
-];
+function moveNameFor(element, tier) {
+  const el = MOVE_BY_EL_TIER[element] ? element : 'none';
+  return (MOVE_BY_EL_TIER[el] && MOVE_BY_EL_TIER[el][tier]) || 'Tackle';
+}
+
+// Small fixed-shape clone of an effect object (never shares references between
+// ability instances).
+function cloneEffect(fx) {
+  if (!fx || typeof fx !== 'object') return null;
+  const out = {};
+  if (fx.selfBuff) out.selfBuff = { ...fx.selfBuff };
+  if (fx.enemyDebuff) out.enemyDebuff = { ...fx.enemyDebuff };
+  if (typeof fx.heal === 'number') out.heal = fx.heal;
+  if (typeof fx.recoil === 'number') out.recoil = fx.recoil;
+  if (fx.noDamage) out.noDamage = true;
+  if (typeof fx.guard === 'number') out.guard = fx.guard;
+  return out;
+}
+
+// Roll a stable per-pet power from a move's [powerMin,powerMax] range.
+function rollPower(rng, mv) {
+  if (mv.powerMin === mv.powerMax) return round2(mv.powerMin);
+  return round2(mv.powerMin + rng() * (mv.powerMax - mv.powerMin));
+}
+
+function pickFrom(rng, arr) {
+  return arr[Math.floor(rng() * arr.length) % arr.length];
+}
+
+// Build a full ability object for a named move (power rolled from `rng`), with
+// cooldown (may be NEGATIVE = charge), priority and effect carried through.
+function buildAbility(id, name, unlock, rng) {
+  const mv = MOVE_STATS[name] || MOVE_STATS.Attack;
+  return {
+    id,
+    name,
+    element: mv.element,
+    power: rollPower(rng, mv),
+    kind: 'attack',
+    cooldown: mv.cooldown | 0,
+    priority: mv.priority | 0,
+    effect: cloneEffect(mv.effect),
+    tier: mv.tier,
+    unlock,
+  };
+}
 
 function slug(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
-function makeAbility(id, name, element, power, unlock, cooldown, priority) {
-  return {
-    id, name, element,
-    power: round2(power),
-    kind: 'attack',
-    cooldown: (cooldown | 0) || 0,
-    priority: (priority | 0) || 0,
-    unlock,
-  };
-}
-
-// Build an ability object for a named move, reading its stats from MOVE_STATS.
-function abilityFromTable(id, name, unlock) {
-  const s = MOVE_STATS[name] || { element: 'none', power: 1.0, cooldown: 0, priority: 0 };
-  return makeAbility(id, name, s.element, s.power, unlock, s.cooldown, s.priority);
-}
-
-// getLearnset(pet) — the pet's fixed, ordered ability list of 6 slots
-// (deterministic from seed). Never mutates the pet. Ability ids are unique.
-// The learnset only decides WHICH named move fills each slot and its unlock
-// CONDITION; every move's power/cooldown/priority is read from MOVE_STATS.
+// getLearnset(pet) — the pet's fixed, ordered ability list (deterministic from
+// seed), 5 slots (DESIGN v11 "Learnset"): Attack (always) + own-element BASIC
+// (random EASY condition) + own-element MID (random MEDIUM condition) + ONE
+// random move (random element, tier basic/mid/strong — NOT special — with a
+// random condition from THAT tier's pool) + own-element SPECIAL (its FIXED
+// SPECIAL condition). Per-pet power is a seeded roll in each move's range.
+// Never mutates the pet.
 export function getLearnset(pet) {
   const g = (pet && pet.genome) || {};
   const el = ELEMENTS.indexOf(g.element) >= 0 ? g.element : 'none';
@@ -300,42 +379,46 @@ export function getLearnset(pet) {
   // Separate RNG stream from genome so learnsets don't perturb appearance.
   const rng = mulberry32((seed ^ 0x5bd1e995) >>> 0);
 
-  const ownPool = MOVE_POOLS[el] || MOVE_POOLS.none;
-  const midIdx = Math.min(1, ownPool.length - 1);
-
   const list = [];
   // slot 0 — universal Attack (always known).
-  list.push(abilityFromTable('attack', 'Attack', { ...SLOT_UNLOCKS.attack }));
-  // slot 1 (m1) — own-element BASIC quick move (fast, prio 1), unlock 5 wins.
-  list.push(abilityFromTable('m1', ownPool[0], { ...SLOT_UNLOCKS.quick }));
-  // slot 2 (m2) — own-element MID move, unlock stage >= child.
-  list.push(abilityFromTable('m2', ownPool[midIdx], { ...SLOT_UNLOCKS.medium }));
+  list.push(buildAbility('attack', 'Attack', { type: 'always' }, rng));
+  // slot 1 (m1) — own-element BASIC, unlock = 1 random EASY condition.
+  const c1 = { ...pickFrom(rng, COND_POOLS.easy) };
+  list.push(buildAbility('m1', moveNameFor(el, 'basic'), c1, rng));
+  // slot 2 (m2) — own-element MID, unlock = 1 random MEDIUM condition.
+  const c2 = { ...pickFrom(rng, COND_POOLS.medium) };
+  list.push(buildAbility('m2', moveNameFor(el, 'mid'), c2, rng));
+  // slot 3 (m3) — ONE random move: random element, tier basic/mid/strong (NOT
+  // special), unlock = 1 random condition from THAT tier's pool.
+  const relEl = pickFrom(rng, ELEMENTS);
+  const relTier = pickFrom(rng, ['basic', 'mid', 'strong']);
+  const c3 = { ...pickFrom(rng, COND_POOLS[TIER_POOL[relTier]]) };
+  list.push(buildAbility('m3', moveNameFor(relEl, relTier), c3, rng));
+  // slot 4 (m4) — own-element SPECIAL, unlock = its FIXED SPECIAL condition.
+  const specName = moveNameFor(el, 'special');
+  const specCond = (MOVE_STATS[specName] && MOVE_STATS[specName].special) || { type: 'always' };
+  list.push(buildAbility('m4', specName, { ...specCond }, rng));
 
-  // slot 3 (m3) — own-element STRONG nuke, unlock = random per-pet (1 rng draw).
-  const ridx = Math.floor(rng() * RANDOM_UNLOCK_POOL.length) % RANDOM_UNLOCK_POOL.length;
-  list.push(abilityFromTable('m3', ownPool[ownPool.length - 1], { ...RANDOM_UNLOCK_POOL[ridx] }));
-
-  // slot 4 (m4) — 2nd-element MID move (random element, 1 rng draw), unlock lvl 6.
-  const el4 = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
-  const pool4 = MOVE_POOLS[el4] || MOVE_POOLS.none;
-  list.push(abilityFromTable('m4', pool4[Math.min(1, pool4.length - 1)], { ...SLOT_UNLOCKS.second }));
-
-  // slot 5 (m5) — off-element STRONG move (random element, 1 rng draw), 20 wins.
-  const el5 = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
-  const pool5 = MOVE_POOLS[el5] || MOVE_POOLS.none;
-  list.push(abilityFromTable('m5', pool5[pool5.length - 1], { ...SLOT_UNLOCKS.offheavy }));
-
-  // v5 (§6): apply any ability-reroll overrides. name/element/power AND (v9)
-  // cooldown/priority may be overridden; the slot id, kind and unlock never are.
+  // §6: apply any ability-reroll overrides. When an override names a known move
+  // its element/cooldown/priority/effect/tier follow that move; power may also
+  // be overridden. The slot id, kind and unlock never change.
   const ov = pet && pet.moveOverrides;
   if (ov && typeof ov === 'object') {
     for (const ab of list) {
       const o = ov[ab.id];
       if (!o) continue;
+      const base = o.name && MOVE_STATS[o.name];
       if (o.name) ab.name = o.name;
+      if (base) {
+        ab.element = base.element;
+        ab.cooldown = base.cooldown | 0;
+        ab.priority = base.priority | 0;
+        ab.effect = cloneEffect(base.effect);
+        ab.tier = base.tier;
+      }
       if (ELEMENTS.indexOf(o.element) >= 0) ab.element = o.element;
       if (typeof o.power === 'number' && isFinite(o.power)) ab.power = round2(o.power);
-      if (Number.isFinite(o.cooldown)) ab.cooldown = Math.max(0, o.cooldown | 0);
+      if (Number.isFinite(o.cooldown)) ab.cooldown = o.cooldown | 0;
       if (Number.isFinite(o.priority)) ab.priority = o.priority | 0;
     }
   }
@@ -356,12 +439,13 @@ export function rerollMove(pet, slotId) {
   // Only reroll a slot that actually exists in this pet's learnset.
   if (!getLearnset(pet).some((a) => a.id === slotId)) return null;
   const rng = mulberry32(randomSeed());
-  // Pick a random named move FROM the stats table and take its real stats.
+  // Pick a random named move FROM the stats table (incl. specials/charge moves)
+  // and take its real stats; power is rolled from the move's range.
   const names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
   const name = names[Math.floor(rng() * names.length) % names.length];
   const s = MOVE_STATS[name];
   pet.moveOverrides[slotId] = {
-    name, element: s.element, power: s.power, cooldown: s.cooldown, priority: s.priority,
+    name, element: s.element, power: rollPower(rng, s), cooldown: s.cooldown | 0, priority: s.priority | 0,
   };
   return getLearnset(pet).find((a) => a.id === slotId) || null;
 }
@@ -378,14 +462,19 @@ export function getExtraMoves(pet) {
   const extras = pet && Array.isArray(pet.extraMoves) ? pet.extraMoves : [];
   for (const e of extras) {
     if (!e || typeof e !== 'object' || typeof e.id !== 'string') continue;
+    // Resolve element/cooldown/priority/effect/tier from the live table by name
+    // (keeps effect + charge encoding correct); power stays the stored per-pet roll.
+    const base = MOVE_STATS[e.name];
     out.push({
       id: e.id,
       name: typeof e.name === 'string' ? e.name : e.id,
-      element: ELEMENTS.indexOf(e.element) >= 0 ? e.element : 'none',
+      element: base ? base.element : (ELEMENTS.indexOf(e.element) >= 0 ? e.element : 'none'),
       power: round2(typeof e.power === 'number' && isFinite(e.power) ? e.power : 1.0),
       kind: 'attack',
-      cooldown: Number.isFinite(e.cooldown) ? Math.max(0, e.cooldown | 0) : 0,
-      priority: Number.isFinite(e.priority) ? (e.priority | 0) : 0,
+      cooldown: base ? (base.cooldown | 0) : (Number.isFinite(e.cooldown) ? (e.cooldown | 0) : 0),
+      priority: base ? (base.priority | 0) : (Number.isFinite(e.priority) ? (e.priority | 0) : 0),
+      effect: base ? cloneEffect(base.effect) : null,
+      tier: base ? base.tier : undefined,
       unlock: { type: 'always' },
     });
   }
@@ -488,6 +577,7 @@ export function learnRandomMove(pet) {
   const names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
   const name = names[Math.floor(rng() * names.length) % names.length];
   const s = MOVE_STATS[name];
+  const power = rollPower(rng, s);
 
   // Fresh unique id: sp1, sp2, … avoiding any existing extra ids.
   const existing = new Set(pet.extraMoves.map((e) => e && e.id));
@@ -496,13 +586,17 @@ export function learnRandomMove(pet) {
   do { id = 'sp' + n; n += 1; } while (existing.has(id) || pet.moves.indexOf(id) >= 0);
 
   const stored = {
-    id, name, element: s.element, power: s.power, cooldown: s.cooldown, priority: s.priority,
+    id, name, element: s.element, power, cooldown: s.cooldown | 0, priority: s.priority | 0,
   };
   pet.extraMoves.push(stored);
   if (pet.moves.indexOf(id) < 0) pet.moves.push(id);
   if (pet.equipped.length < 4 && pet.equipped.indexOf(id) < 0) pet.equipped.push(id);
 
-  return { id, name, element: s.element, power: s.power, kind: 'attack', cooldown: s.cooldown, priority: s.priority, unlock: { type: 'always' } };
+  return {
+    id, name, element: s.element, power, kind: 'attack',
+    cooldown: s.cooldown | 0, priority: s.priority | 0, effect: cloneEffect(s.effect), tier: s.tier,
+    unlock: { type: 'always' },
+  };
 }
 
 function unlockMet(unlock, pet) {
@@ -511,16 +605,31 @@ function unlockMet(unlock, pet) {
     case 'always': return true;
     case 'level': return (pet.level || 1) >= unlock.value;
     case 'trainings': return (pet.trainingsDone || 0) >= unlock.value;
-    case 'weight': return (pet.weight || 0) >= unlock.value;
+    case 'weight': {
+      const w = pet.weight || 0;
+      return unlock.cmp === 'lte' ? w <= unlock.value : w >= unlock.value;
+    }
     case 'education': return (pet.education || 0) >= unlock.value;
     case 'wins': return (pet.battleWins || 0) >= unlock.value;
+    case 'scold': return (pet.scoldCount || 0) >= unlock.value;
+    case 'cuddle': return (pet.cuddleCount || 0) >= unlock.value;
+    case 'game': return (pet.rpsWins || 0) >= unlock.value;
+    case 'healed': return (pet.totalHealed || 0) >= unlock.value;
+    case 'losses': return (pet.battleLosses || 0) >= unlock.value;
+    case 'spoiledEdu': return (pet.spoiled || 0) === 0 && (pet.education || 0) >= 70;
+    case 'stat': {
+      // STR/SPD/DEF/CRIT/HP compare the pet's COMPUTED stats.
+      const stats = computeStats(pet);
+      const v = stats[unlock.stat];
+      return typeof v === 'number' && v >= unlock.value;
+    }
     case 'stage': {
       // Met once the pet's stage index reaches (or passes) the required stage.
       const cur = STAGE_ORDER.indexOf(pet.stage);
       const need = STAGE_ORDER.indexOf(unlock.value);
       return need >= 0 && cur >= need;
     }
-    default: return false; // 'random' is resolved to a concrete type at build time
+    default: return false;
   }
 }
 
@@ -552,7 +661,7 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 8,
+    version: 11,
     name: (name && String(name).trim()) || 'Slime',
     genome,
     stage: 'egg',
@@ -592,6 +701,13 @@ export function createPet(name, seed) {
     moveOverrides: {}, // v5: per-slot ability reroll overrides {id:{name,element,power,cooldown,priority}} (§6 shop)
     trainingsDone: 0, // completed training sessions (feeds 'trainings' unlocks)
     battleWins: 0, // battles won (feeds 'wins' unlocks)
+    // v11 counters — feed the new unlock condition types (scold/cuddle/game/healed/losses).
+    scoldCount: 0, // valid scolds
+    cuddleCount: 0, // cuddles given
+    rpsWins: 0, // Rock-Paper-Scissors wins
+    totalHealed: 0, // lifetime HP restored by heals (Heal / Cure Potion / in-battle)
+    battleLosses: 0, // battles lost
+    lastSpecialAt: 0, // ms of last Special training (once-per-day gate)
     // v5: food-boredom tracking (§2) — 3× the same food in a row hits happiness.
     sameFoodStreak: 0,
     lastFoodId: null,
@@ -671,10 +787,10 @@ export function battleSnapshot(pet) {
     .map((id) => byId.get(id))
     .filter(Boolean)
     .slice(0, 4)
-    .map((a) => ({ id: a.id, name: a.name, element: a.element, power: a.power, kind: a.kind, cooldown: a.cooldown | 0, priority: a.priority | 0 }));
+    .map((a) => ({ id: a.id, name: a.name, element: a.element, power: a.power, kind: a.kind, cooldown: a.cooldown | 0, priority: a.priority | 0, effect: a.effect || null }));
   if (moves.length === 0) {
     const atk = byId.get('attack');
-    if (atk) moves.push({ id: atk.id, name: atk.name, element: atk.element, power: atk.power, kind: atk.kind, cooldown: atk.cooldown | 0, priority: atk.priority | 0 });
+    if (atk) moves.push({ id: atk.id, name: atk.name, element: atk.element, power: atk.power, kind: atk.kind, cooldown: atk.cooldown | 0, priority: atk.priority | 0, effect: atk.effect || null });
   }
   return {
     name: pet.name,
@@ -766,7 +882,7 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 8;
+  pet.version = 11;
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -810,6 +926,13 @@ export function deserializePet(obj) {
   // v4 combat & lifecycle fields (defaults for pre-v4 saves).
   pet.trainingsDone = Math.max(0, Math.floor(num(pet.trainingsDone, 0)));
   pet.battleWins = Math.max(0, Math.floor(num(pet.battleWins, 0)));
+  // v11 counters (default 0 for older saves).
+  pet.scoldCount = Math.max(0, Math.floor(num(pet.scoldCount, 0)));
+  pet.cuddleCount = Math.max(0, Math.floor(num(pet.cuddleCount, 0)));
+  pet.rpsWins = Math.max(0, Math.floor(num(pet.rpsWins, 0)));
+  pet.totalHealed = Math.max(0, num(pet.totalHealed, 0));
+  pet.battleLosses = Math.max(0, Math.floor(num(pet.battleLosses, 0)));
+  pet.lastSpecialAt = num(pet.lastSpecialAt, 0);
   pet.state = pet.state === 'dead' ? 'dead' : 'alive';
   pet.lastFedAt = num(pet.lastFedAt, now);
   // v5 fields (defaults for pre-v5 saves).
@@ -820,7 +943,16 @@ export function deserializePet(obj) {
   // v7 illness fields (defaults for pre-v7 saves).
   pet.sick = !!pet.sick;
   pet.illTimer = Math.max(0, num(pet.illTimer, 0));
-  if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') pet.moveOverrides = {};
+  if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') {
+    pet.moveOverrides = {};
+  } else {
+    // Drop overrides whose move name no longer exists in the v11 table so a
+    // stale reroll can't inject a phantom move.
+    for (const k of Object.keys(pet.moveOverrides)) {
+      const o = pet.moveOverrides[k];
+      if (!o || !o.name || !MOVE_STATS[o.name]) delete pet.moveOverrides[k];
+    }
+  }
   // v10: special-training extras {id,name,element,power,cooldown,priority}.
   const rawExtra = Array.isArray(obj.extraMoves) ? obj.extraMoves : [];
   const extraSeen = new Set();
@@ -833,7 +965,7 @@ export function deserializePet(obj) {
       name: typeof e.name === 'string' ? e.name : e.id,
       element: ELEMENTS.indexOf(e.element) >= 0 ? e.element : 'none',
       power: round2(typeof e.power === 'number' && isFinite(e.power) ? e.power : 1.0),
-      cooldown: Number.isFinite(e.cooldown) ? Math.max(0, e.cooldown | 0) : 0,
+      cooldown: Number.isFinite(e.cooldown) ? (e.cooldown | 0) : 0, // preserve negative (charge)
       priority: Number.isFinite(e.priority) ? (e.priority | 0) : 0,
     });
   }
