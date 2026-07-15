@@ -208,7 +208,7 @@ All new user-facing strings (shop, potions, ability reroll, notifications, egg c
 
 Serialization `version` bumped to **6**; `deserializePet` migrates the new field. New persistent field: `nextPoopAt` (timestamp of the next potty need).
 
-- **Heal (🩹) is always free, never charges coins.** The 4h free-heal cooldown stays (`pet.lastFreeHealAt`); pressing Heal on cooldown just refuses with a toast (`toast.healNotReady` — "Not ready yet — try a Cure Potion!") and deducts nothing. Off-cooldown top-ups are the shop's **Cure Potion**. Button label is just "Heal" (no price, no countdown).
+- **Heal (🩹) is always free, never charges coins.** The 4h free-heal cooldown stays (`pet.lastFreeHealAt`). **v7:** while cooling down the Heal button is **disabled** (`.disabled`, grey, `pointer-events:none`) and shows a live countdown label `action.healCooldown` ("Heal {time}", updated in the per-second `refreshBars`); it re-enables and relabels to `action.heal` ("Heal") the instant the cooldown expires. The on-cooldown toast (`toast.healNotReady`) remains as a safety fallback. Off-cooldown top-ups are the shop's **Cure Potion**.
 - **Potion prices dropped to 30** (Cure Potion & Stamina Potion; were 50). Reroll unchanged (200).
 - **ℹ️ info button moved to the TOP-LEFT** of `#pet-stage` (🛒 shop stays bottom-right).
 - **Baby/milk boredom exemption:** the same-food-3× penalty never applies to `milk` or while `stage==='baby'` — a baby can only drink milk, so it never gets bored/sad from it.
@@ -217,6 +217,19 @@ Serialization `version` bumped to **6**; `deserializePet` migrates the new field
 - **Notifications toggle moved to the Menu** screen (out of the Shop); wired identically (`updateNotifyButton`/`requestNotifications`).
 - **Language is a "🌐 Language" button** that opens an in-page chooser sheet (`#lang-sheet`, 🇮🇹/🇯🇵/🇬🇧), replacing the always-visible 3-flag selector. Live switching + persistence unchanged.
 - **Reset is at the BOTTOM of the Menu with an in-page two-step confirm** (no native `confirm()`): first press arms it + shows a warning and a Cancel; a second press within ~4s (auto-disarm) runs the full `resetGame()` wipe.
+
+## v7 — illness (Agent A)
+
+Serialization `version` bumped to **7**; `deserializePet` migrates the new fields onto older saves. New persistent pet fields: `sick=false`, `illTimer=0` (ms).
+
+- **Getting sick:** in the 1s care tick (and offline catch-up), while `alive`, hatched and NOT already sick, a sustained bad state (`happiness < 20` OR `hunger < 15`) fills `illTimer` (`+dt`); a healthy state drains it (`−2× dt`, floored at 0). When `illTimer ≥ ILL_ONSET_MS` (**8 real minutes**) the pet becomes `sick=true`, `illTimer=0`, a `toast.gotSick` fires, and a debounced sick notification (`notif.sickTitle`/`notif.sickBody`) fires via the existing notif engine (`notifiedFlags.sick`).
+- **While sick:** happiness decays **~2×** faster (awake); HP drains **~4%/hour floored at 1** — illness NEVER kills (only starvation floors at 0; if awake+starving, starvation's drain to 0 takes over). The pet screen shows a **🤒 Sick!** badge (`#sick-badge`); `renderPet` receives `opts.sick` and casts a subtle pale-green sickly tint over the body. The sad mouth still applies via the existing mood logic.
+- **Cure — 💉 Syringe (shop, 50 coins):** `doBuySyringe` — if not sick, toast `shop.notSick` and **don't charge**; if `coins < 50`, toast `shop.notEnough`; otherwise deduct 50, set `sick=false`/`illTimer=0`, `+10 happiness`, toast `shop.cured`. New shop card alongside Cure/Stamina/Reroll.
+- **Tuning constants** (game.js, easy to change): `ILL_ONSET_MS = 8*60*1000`, thresholds `happiness<20`/`hunger<15`, `ILL_HP_PER_HR = 0.04` (floor 1), `SICK_HAPPY_MULT = 2`, `SYRINGE_COST = 50`, `CURE_HAPPY = 10`.
+- **i18n:** `status.sick`, `toast.gotSick`, `shop.syringe`/`shop.syringeDesc`/`shop.cured`/`shop.notSick`, `notif.sickTitle`/`notif.sickBody` added to EN + IT + JA.
+
+### v6.1 — training costs stamina again
+Training costs a **flat 20 ⚡ stamina per session for all 5 exercises** (`TRAIN_STAMINA_COST = 20`, replacing the per-exercise `stam` values). `doTrain` refuses up front with `toast.tooTired` if `stamina < 20`; a successful session deducts 20. Exercise buttons are `.disabled` while too tired (and still while on strike / egg), and each shows a `20⚡` cost span. `train.hint` mentions the stamina cost. **Only training** costs stamina — RPS Play and battles remain free.
 
 ## Style
 Pastel palette from genome hue (HSL: body `hsl(hue 70% 80%)`, darker outline same hue, accent hue2). Big glossy eyes with white highlights, blush circles, tiny mouth. Idle bounce/squish animation (CSS or SVG transform). Everything cute — think Kirby/slime mascots.

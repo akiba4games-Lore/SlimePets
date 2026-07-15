@@ -345,7 +345,7 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 6,
+    version: 7,
     name: (name && String(name).trim()) || 'Slime',
     genome,
     stage: 'egg',
@@ -550,7 +550,7 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 6;
+  pet.version = 7;
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -601,6 +601,9 @@ export function deserializePet(obj) {
   pet.sameFoodStreak = Math.max(0, Math.floor(num(pet.sameFoodStreak, 0)));
   pet.lastFoodId = typeof pet.lastFoodId === 'string' ? pet.lastFoodId : null;
   pet.trainBlockUntil = num(pet.trainBlockUntil, 0);
+  // v7 illness fields (defaults for pre-v7 saves).
+  pet.sick = !!pet.sick;
+  pet.illTimer = Math.max(0, num(pet.illTimer, 0));
   if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') pet.moveOverrides = {};
   // Moves: keep only ids that still exist in this pet's learnset; always know Attack.
   const validIds = new Set(getLearnset(pet).map((a) => a.id));

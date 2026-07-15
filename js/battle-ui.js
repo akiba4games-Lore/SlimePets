@@ -146,7 +146,7 @@ function el(tag, className, text) {
 // guarantees this array for the player; back-compat opponents/old engines may
 // not have it, so every lookup here is defensive).
 const ELEMENT_ICON = {
-  none: '⚪', water: '💧', fire: '🔥', grass: '🌿', earth: '⛰️',
+  none: '⚪', water: '💧', fire: '🔥', grass: '🍃', earth: '🪨',
   lightning: '⚡', dark: '🌑', light: '✨',
 };
 

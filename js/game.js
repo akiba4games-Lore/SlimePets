@@ -88,6 +88,21 @@ const CURE_COST = 30;
 const STAMINA_POTION_COST = 30;
 const REROLL_COST = 200;
 
+// v7 — Syringe (cure illness). 50 coins, +10 happiness.
+const SYRINGE_COST = 50;
+const CURE_HAPPY = 10;
+
+// v7 — Illness (DESIGN v7). Sustained sad/hungry state makes the pet sick.
+const ILL_ONSET_MS = 8 * 60 * 1000; // 8 real minutes of sustained bad state
+const ILL_HAPPY_THRESH = 20; // happiness below this counts as a bad state
+const ILL_HUNGER_THRESH = 15; // hunger below this counts as a bad state
+const ILL_RECOVER_MULT = 2; // illTimer decays this × dt while healthy
+const ILL_HP_PER_HR = 0.04; // fraction of MAX HP drained per hour while sick (floor 1)
+const SICK_HAPPY_MULT = 2; // happiness decays this × faster while sick
+
+// v6.1 — training now costs a flat 20 stamina per session (all exercises).
+const TRAIN_STAMINA_COST = 20;
+
 // Spoiled food-refusal flavor lines live in i18n as brat.0 … brat.(N-1).
 const BRAT_LINE_COUNT = 3;
 
@@ -114,8 +129,8 @@ const STARVE_WEIGHT_PER_HR = 100 / 6; // ~16.7/h ⇒ full weight gone in 6h
 // v4 — element display icons (UI only; the type chart lives in battle.js).
 // Labels are localized via t('element.<el>').
 const ELEMENT_ICON = {
-  none: '⚪', water: '💧', fire: '🔥', grass: '🌿',
-  earth: '⛰️', lightning: '⚡', dark: '🌑', light: '✨',
+  none: '⚪', water: '💧', fire: '🔥', grass: '🍃',
+  earth: '🪨', lightning: '⚡', dark: '🌑', light: '✨',
 };
 function elementIcon(el) {
   return ELEMENT_ICON[el] || ELEMENT_ICON.none;
@@ -283,13 +298,15 @@ function applyDecay(pet, dtSec) {
   const hygMult = pet.poopInRoom ? 3 : 1;
   // v5 (§4): a dirty pet (hygiene < 35) loses happiness ~1.6× faster.
   const dirtyMult = c.hygiene < DIRTY_THRESHOLD ? DIRTY_DECAY_MULT : 1;
+  // v7: a sick pet loses happiness ~2× faster (applied to awake decay only).
+  const sickMult = pet.sick ? SICK_HAPPY_MULT : 1;
   if (pet.sleeping) {
     c.hunger -= DECAY_SLEEP.hunger * dtH;
     c.hygiene -= DECAY_SLEEP.hygiene * dtH * hygMult;
     c.happiness += DECAY_SLEEP.happiness * dtH;
   } else {
     c.hunger -= DECAY_AWAKE.hunger * dtH;
-    c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1) * dirtyMult;
+    c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1) * dirtyMult * sickMult;
     c.hygiene -= DECAY_AWAKE.hygiene * dtH * hygMult;
   }
   // neglect drags happiness down
@@ -313,10 +330,29 @@ function applyDecay(pet, dtSec) {
   // the passive heal entirely and can reach 0 (death).
   if (starving && !pet.sleeping) {
     pet.hpCurrent = clamp(pet.hpCurrent - maxHp * STARVE_HP_PER_HR * dtH, 0, maxHp);
+  } else if (pet.sick) {
+    // v7: illness drains HP slowly (~4%/h) but NEVER kills (floor 1); it
+    // overrides the passive heal so a sick pet can't heal up on its own.
+    pet.hpCurrent = clamp(pet.hpCurrent - maxHp * ILL_HP_PER_HR * dtH, 1, maxHp);
   } else {
     // passive HP healing (awake +8%/h, sleeping +32%/h of max), floored at 1.
     const healRate = pet.sleeping ? HEAL_RATE_SLEEP : HEAL_RATE_AWAKE;
     pet.hpCurrent = clamp(pet.hpCurrent + maxHp * healRate * dtH, 1, maxHp);
+  }
+  // v7: illness accrual/onset. Only while hatched & not already sick: a
+  // sustained sad OR hungry state fills illTimer; a healthy state drains it.
+  if (pet.stage !== 'egg' && !pet.sick) {
+    const badState = c.happiness < ILL_HAPPY_THRESH || c.hunger < ILL_HUNGER_THRESH;
+    if (badState) {
+      pet.illTimer = (pet.illTimer || 0) + dtSec * 1000;
+      if (pet.illTimer >= ILL_ONSET_MS) {
+        pet.sick = true;
+        pet.illTimer = 0;
+        toast(t('toast.gotSick', { name: pet.name }));
+      }
+    } else {
+      pet.illTimer = Math.max(0, (pet.illTimer || 0) - dtSec * 1000 * ILL_RECOVER_MULT);
+    }
   }
   // stamina regen: ~1 per 30s (2x sleeping)
   const rate = pet.sleeping ? 2 : 1;
@@ -692,7 +728,11 @@ export function doTrain(name) {
     toast(t('toast.trainBlocked', { name: pet.name, time: fmtDuration(pet.trainBlockUntil - Date.now()) }));
     return;
   }
-  // v6: training no longer costs or requires stamina.
+  // v6.1: training costs a flat 20 stamina again. Refuse up front if short.
+  if (pet.stamina < TRAIN_STAMINA_COST) {
+    toast(t('toast.tooTired', { name: pet.name }));
+    return;
+  }
   // Refusal (free): laziness + spoiled, tempered by education. A refusal puts the
   // pet ON STRIKE — ALL training locks for 5 min (clear early by scolding).
   const refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
@@ -706,7 +746,8 @@ export function doTrain(name) {
     save();
     return;
   }
-  // pay costs (v6: no stamina cost — only hunger/hygiene/weight)
+  // pay costs (v6.1: flat 20 stamina + hunger/hygiene/weight)
+  pet.stamina = clamp(pet.stamina - TRAIN_STAMINA_COST, 0, pet.genome.maxStamina);
   pet.care.hunger = clamp(pet.care.hunger - ex.hunger, 0, 100);
   pet.care.hygiene = clamp(pet.care.hygiene - ex.hygiene - TRAIN_HYGIENE_HIT, 0, 100);
   // Working out burns a little weight (running burns the most).
@@ -906,6 +947,7 @@ function renderPetCustom(extra) {
     chubby,
     element: pet.genome.element,
     dirty,
+    sick: pet.stage !== 'egg' && pet.state !== 'dead' && !!pet.sick,
     dead: pet.state === 'dead',
   };
   if (extra) Object.assign(opts, extra);
@@ -944,6 +986,25 @@ function refreshBars() {
   refreshPoopUI();
   const starveBadge = $('starve-badge');
   if (starveBadge) starveBadge.style.display = isStarving(pet) ? '' : 'none';
+  // v7: sick badge (🤒) — only while hatched, alive and sick.
+  const sickBadge = $('sick-badge');
+  if (sickBadge) sickBadge.style.display = (pet.sick && pet.stage !== 'egg' && pet.state !== 'dead') ? '' : 'none';
+  // v7: Heal button — DISABLED with a live countdown while the free-heal cools
+  // down; re-enables (and relabels to "Heal") the moment the cooldown expires.
+  const healBtn = $('btn-heal');
+  if (healBtn) {
+    const rem = healCooldownRemaining(pet);
+    const label = healBtn.querySelector('.act-label');
+    if (rem > 0) {
+      healBtn.disabled = true;
+      healBtn.classList.add('disabled');
+      if (label) label.textContent = t('action.healCooldown', { time: fmtDuration(rem) });
+    } else {
+      healBtn.disabled = false;
+      healBtn.classList.remove('disabled');
+      if (label) label.textContent = t('action.heal');
+    }
+  }
 }
 
 export function refresh() {
@@ -1054,11 +1115,12 @@ function refreshTrain() {
       badge.style.display = 'none';
     }
   }
-  // disable exercises only while on strike or still an egg (v6: no stamina gate)
+  // disable exercises while on strike, still an egg, or too tired (v6.1: 20⚡ gate)
+  const tooTired = pet.stamina < TRAIN_STAMINA_COST;
   document.querySelectorAll('.exercise').forEach((btn) => {
     const ex = EXERCISES[btn.dataset.ex];
     if (!ex) return;
-    btn.classList.toggle('disabled', blocked || pet.stage === 'egg');
+    btn.classList.toggle('disabled', blocked || pet.stage === 'egg' || tooTired);
   });
 }
 
@@ -1270,6 +1332,24 @@ function doBuyStamina() {
   save();
 }
 
+// v7 — Syringe (💉): cures illness. Refused FREE if the pet isn't sick; costs
+// 50 coins otherwise, clears the sickness and gives a little happiness back.
+function doBuySyringe() {
+  const pet = state.pet;
+  if (!pet) return;
+  if (!pet.sick) { toast(t('shop.notSick', { name: pet.name })); return; }
+  if ((pet.coins || 0) < SYRINGE_COST) { toast(t('shop.notEnough')); return; }
+  pet.coins -= SYRINGE_COST;
+  pet.sick = false;
+  pet.illTimer = 0;
+  pet.care.happiness = clamp(pet.care.happiness + CURE_HAPPY, 0, 100);
+  reaction('💉');
+  toast(t('shop.cured', { name: pet.name }));
+  refreshShop();
+  refresh();
+  save();
+}
+
 // Ability Reroll — open a picker of the pet's currently-learned moves (excluding
 // the protected Attack slot). Charges only once a slot is actually chosen.
 function openRerollPicker() {
@@ -1315,7 +1395,7 @@ function doReroll(slotId) {
 //
 // Each condition is debounced: it fires once when the pet ENTERS the state and
 // won't fire again until the condition clears and re-triggers (tracked here).
-const notifiedFlags = { poop: false, starving: false, hungry: false, lowhp: false, dirty: false };
+const notifiedFlags = { poop: false, starving: false, hungry: false, lowhp: false, dirty: false, sick: false };
 
 function notificationsGranted() {
   return typeof Notification !== 'undefined' && Notification.permission === 'granted';
@@ -1368,6 +1448,7 @@ function updateNotifications(pet) {
     ['hungry', pet.care.hunger < 15, 'notif.hungryTitle', 'notif.hungryBody'],
     ['lowhp', pet.hpCurrent < maxHp * 0.25, 'notif.lowHpTitle', 'notif.lowHpBody'],
     ['dirty', pet.care.hygiene < DIRTY_THRESHOLD, 'notif.dirtyTitle', 'notif.dirtyBody'],
+    ['sick', !!pet.sick, 'notif.sickTitle', 'notif.sickBody'],
   ];
   for (const [flag, active, titleKey, bodyKey] of conditions) {
     if (active && !notifiedFlags[flag]) {
@@ -1455,6 +1536,7 @@ export function initGame() {
   bindClick('btn-shop-back', () => showScreen('menu'));
   bindClick('btn-buy-cure', doBuyCure);
   bindClick('btn-buy-stamina', doBuyStamina);
+  bindClick('btn-buy-syringe', doBuySyringe);
   bindClick('btn-buy-reroll', openRerollPicker);
   bindClick('btn-notify', requestNotifications);
   bindClick('reroll-close', () => closeSheet('reroll-sheet'));

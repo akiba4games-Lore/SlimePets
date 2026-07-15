@@ -317,6 +317,7 @@ body {
   font-family: inherit;
 }
 .action:active { transform: scale(0.92); background: #fff0f8; }
+.action.disabled, .action:disabled { opacity: 0.45; filter: grayscale(0.5); pointer-events: none; }
 .act-ico { font-size: 24px; }
 .act-label { font-size: 12px; font-weight: 800; color: var(--ink); }
 
@@ -739,6 +740,24 @@ body {
   z-index: 3;
   background: #ffe0b3;
   color: #a35a00;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  animation: pulse 0.9s infinite;
+}
+
+/* ---------------- v7: illness badge ---------------- */
+.sick-badge {
+  position: absolute;
+  top: 34px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  background: #d9f0c4;
+  color: #3f7020;
   font-weight: 800;
   font-size: 13px;
   padding: 4px 12px;

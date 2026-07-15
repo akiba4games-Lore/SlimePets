@@ -58,6 +58,7 @@ const en = {
   // pet screen status / hints
   'status.needsCare': '🩹 Needs care!',
   'status.starving': '😿 Starving!',
+  'status.sick': '🤒 Sick!',
   'pet.eggHint': 'Tap the egg to help it hatch!',
   'pet.eggHintTaps': 'Tap the egg to help it hatch! ({taps} taps, or just wait)',
   'pet.deathText': '{name} has passed away… tap to send it to the sky 🕊️',
@@ -103,7 +104,7 @@ const en = {
   'train.plusHp': '+HP',
   'train.plusDef': '+DEF',
   'train.plusCrit': '+CRIT',
-  'train.hint': 'A lazy slime might refuse to train — that\'s free, at least!',
+  'train.hint': 'Training costs 20 ⚡ stamina. A lazy slime might refuse anyway!',
   'train.onStrike': '😤 On strike — {time}',
 
   // menu screen
@@ -149,6 +150,10 @@ const en = {
   'shop.staminaFull': '{name} is already full of energy!',
   'shop.noRerollMoves': '{name} has no moves to reroll yet.',
   'shop.rerolled': '{name} rerolled into {icon} {move}! 🎲',
+  'shop.syringe': 'Syringe',
+  'shop.syringeDesc': 'Cures illness',
+  'shop.cured': '{name} feels better! 💉✨',
+  'shop.notSick': '{name} isn\'t sick right now.',
 
   // v5 — notifications
   'notif.enable': '🔔 Enable notifications',
@@ -168,6 +173,8 @@ const en = {
   'notif.lowHpBody': "{name}'s health is very low!",
   'notif.dirtyTitle': '🛁 Bath time!',
   'notif.dirtyBody': '{name} is getting dirty!',
+  'notif.sickTitle': '🤒 Feeling sick!',
+  'notif.sickBody': '{name} is sick — buy a Syringe to cure it!',
 
   // rock-paper-scissors
   'rps.title': '✊✋✌️ Rock Paper Scissors',
@@ -190,6 +197,7 @@ const en = {
   'toast.stuffed': '{name} is stuffed! 🤢',
   'toast.enjoyedFood': '{name} enjoyed the {food}! 😋',
   'toast.boredFood': '{name} is bored of eating {food}… 😒',
+  'toast.gotSick': '{name} got sick! 🤒',
   'toast.cuddleDeserved': 'A well-deserved cuddle! {name} beams 💖',
   'toast.cuddleSpoiled': '{name} loves the cuddle… maybe a bit too much 😤',
   'toast.pottyGood': 'Good potty, {name}! 💕',
@@ -321,6 +329,7 @@ const it = {
 
   'status.needsCare': '🩹 Ha bisogno di cure!',
   'status.starving': '😿 Sta morendo di fame!',
+  'status.sick': '🤒 Malato!',
   'pet.eggHint': 'Tocca l\'uovo per farlo schiudere!',
   'pet.eggHintTaps': 'Tocca l\'uovo per farlo schiudere! (ancora {taps} tocchi, o aspetta)',
   'pet.deathText': '{name} è volato via… tocca per mandarlo in cielo 🕊️',
@@ -363,7 +372,7 @@ const it = {
   'train.plusHp': '+HP',
   'train.plusDef': '+DEF',
   'train.plusCrit': '+CRIT',
-  'train.hint': 'Uno slime pigro potrebbe rifiutare di allenarsi — almeno è gratis!',
+  'train.hint': 'L\'allenamento costa 20 ⚡ di energia. Uno slime pigro potrebbe comunque rifiutare!',
   'train.onStrike': '😤 In sciopero — {time}',
 
   'menu.title': 'Menu',
@@ -407,6 +416,10 @@ const it = {
   'shop.staminaFull': '{name} ha già tutta l\'energia!',
   'shop.noRerollMoves': '{name} non ha ancora mosse da rigenerare.',
   'shop.rerolled': '{name} ha rigenerato {icon} {move}! 🎲',
+  'shop.syringe': 'Siringa',
+  'shop.syringeDesc': 'Cura la malattia',
+  'shop.cured': '{name} si sente meglio! 💉✨',
+  'shop.notSick': '{name} non è malato al momento.',
 
   // v5 — notifiche
   'notif.enable': '🔔 Attiva le notifiche',
@@ -426,6 +439,8 @@ const it = {
   'notif.lowHpBody': 'La salute di {name} è molto bassa!',
   'notif.dirtyTitle': '🛁 Serve un bagnetto!',
   'notif.dirtyBody': '{name} si sta sporcando!',
+  'notif.sickTitle': '🤒 Si sente male!',
+  'notif.sickBody': '{name} è malato — compra una Siringa per curarlo!',
 
   'rps.title': '✊✋✌️ Carta Forbice Sasso',
   'rps.you': 'Tu',
@@ -446,6 +461,7 @@ const it = {
   'toast.stuffed': '{name} è sazio! 🤢',
   'toast.enjoyedFood': '{name} si è gustato {food}! 😋',
   'toast.boredFood': '{name} è stufo di mangiare {food}… 😒',
+  'toast.gotSick': '{name} si è ammalato! 🤒',
   'toast.cuddleDeserved': 'Una coccola meritata! {name} è raggiante 💖',
   'toast.cuddleSpoiled': '{name} adora le coccole… forse un po\' troppo 😤',
   'toast.pottyGood': 'Bravo in bagno, {name}! 💕',
@@ -573,6 +589,7 @@ const ja = {
 
   'status.needsCare': '🩹 おてあてが ひつよう！',
   'status.starving': '😿 おなかペコペコ！',
+  'status.sick': '🤒 びょうき！',
   'pet.eggHint': 'タマゴを タップして かえそう！',
   'pet.eggHintTaps': 'タマゴを タップして かえそう！（あと {taps} かい、または まつ）',
   'pet.deathText': '{name} は 天国へ… タップして そらへ おくろう 🕊️',
@@ -615,7 +632,7 @@ const ja = {
   'train.plusHp': '+HP',
   'train.plusDef': '+DEF',
   'train.plusCrit': '+CRIT',
-  'train.hint': 'なまけものの スライムは トレーニングを ことわるかも——タダだけどね！',
+  'train.hint': 'トレーニングは スタミナ 20 ⚡ かかるよ。なまけものの スライムは ことわるかも！',
   'train.onStrike': '😤 ストライキちゅう — {time}',
 
   'menu.title': 'メニュー',
@@ -659,6 +676,10 @@ const ja = {
   'shop.staminaFull': '{name} は もう スタミナ まんタン！',
   'shop.noRerollMoves': '{name} には まだ ふりなおせる わざが ないよ。',
   'shop.rerolled': '{name} は {icon} {move} に かわった！🎲',
+  'shop.syringe': 'ちゅうしゃ',
+  'shop.syringeDesc': 'びょうきを なおす',
+  'shop.cured': '{name} は げんきに なった！💉✨',
+  'shop.notSick': '{name} は いま びょうきじゃ ないよ。',
 
   // v5 — つうち
   'notif.enable': '🔔 つうちを オンにする',
@@ -678,6 +699,8 @@ const ja = {
   'notif.lowHpBody': '{name} の たいりょくが とても ひくいよ！',
   'notif.dirtyTitle': '🛁 おふろの じかん！',
   'notif.dirtyBody': '{name} が よごれてきたよ！',
+  'notif.sickTitle': '🤒 ぐあいが わるい！',
+  'notif.sickBody': '{name} が びょうき——ちゅうしゃを かって なおそう！',
 
   'rps.title': '✊✋✌️ じゃんけん',
   'rps.you': 'あなた',
@@ -698,6 +721,7 @@ const ja = {
   'toast.stuffed': '{name} は おなか いっぱい！🤢',
   'toast.enjoyedFood': '{name} は {food} を おいしそうに たべた！😋',
   'toast.boredFood': '{name} は {food} に あきちゃった… 😒',
+  'toast.gotSick': '{name} は びょうきに なった！🤒',
   'toast.cuddleDeserved': 'ごほうびの なでなで！{name} は にっこり 💖',
   'toast.cuddleSpoiled': '{name} は なでなで だいすき… ちょっと あまえんぼうかも 😤',
   'toast.pottyGood': 'トイレ じょうず、{name}！💕',

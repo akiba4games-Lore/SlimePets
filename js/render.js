@@ -558,6 +558,11 @@ export function renderPet(svgEl, genome, stage, opts) {
     ? `<g clip-path="url(#${clipId})"><ellipse cx="${L.cx}" cy="${L.cy - L.h * 0.15}" rx="${L.w * 1.1}" ry="${L.h * 1.1}" fill="${tintColor}" opacity="0.16"/></g>`
     : '';
 
+  // v7: sickly tint — a subtle pale-green desaturating cast over the whole body.
+  const sickTint = opts.sick
+    ? `<g clip-path="url(#${clipId})"><ellipse cx="${L.cx}" cy="${L.cy}" rx="${L.w * 1.3}" ry="${L.h * 1.35}" fill="hsl(96 42% 66%)" opacity="0.32"/></g>`
+    : '';
+
   // Glossy highlight.
   const gloss =
     `<ellipse cx="${L.cx - L.w * 0.38}" cy="${L.cy - L.h * 0.45}" rx="${L.w * 0.28}" ry="${L.h * 0.34}" fill="#ffffff" opacity="0.5" transform="rotate(-18 ${L.cx - L.w * 0.38} ${L.cy - L.h * 0.45})"/>` +
@@ -604,6 +609,7 @@ export function renderPet(svgEl, genome, stage, opts) {
     back +
     body +
     tint +
+    sickTint +
     pat +
     gloss +
     face +
