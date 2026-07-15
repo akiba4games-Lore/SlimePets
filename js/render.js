@@ -211,6 +211,10 @@ function starPath(cx, cy, r, fill) {
 // ---------------------------------------------------------------------------
 function mouth(style, x, y, w, pal, mood) {
   const c = pal.eye;
+  if (mood === 'angry') {
+    // a deeper, grumpy frown (brows + 💢 added by the caller)
+    return `<path d="M ${x - w * 0.5} ${y + w * 0.34} Q ${x} ${y - w * 0.3} ${x + w * 0.5} ${y + w * 0.34}" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;
+  }
   if (mood === 'sad') {
     return `<path d="M ${x - w * 0.5} ${y + w * 0.3} Q ${x} ${y - w * 0.2} ${x + w * 0.5} ${y + w * 0.3}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`;
   }
@@ -590,6 +594,17 @@ export function renderPet(svgEl, genome, stage, opts) {
       face += `<path d="M ${L.cx - 4} ${mouthY - eyeR * 0.6} L ${L.cx + 4} ${mouthY - eyeR * 0.6} L ${L.cx} ${mouthY - eyeR * 0.1} Z" fill="${pal.accentDark}"/>`;
   }
   face += mouth(g.mouth, L.cx, mouthY, mouthW, pal, mood);
+  // Angry mood: slanted V-brows over the eyes + a 💢 anger mark.
+  if (mood === 'angry') {
+    const by = eyeY - eyeR * 1.05;
+    const bl = eyeR * 0.95;
+    face +=
+      `<g stroke="${pal.eye}" stroke-width="3" stroke-linecap="round">` +
+      `<line x1="${L.cx - eyeDX - bl * 0.5}" y1="${by - bl * 0.35}" x2="${L.cx - eyeDX + bl * 0.5}" y2="${by + bl * 0.2}"/>` +
+      `<line x1="${L.cx + eyeDX + bl * 0.5}" y1="${by - bl * 0.35}" x2="${L.cx + eyeDX - bl * 0.5}" y2="${by + bl * 0.2}"/>` +
+      `</g>` +
+      `<text x="${L.cx + L.w * 0.72}" y="${L.cy - L.h * 0.72}" font-size="18">💢</text>`;
+  }
 
   // Sleep Zzz.
   const zzz =

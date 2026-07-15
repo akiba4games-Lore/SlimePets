@@ -842,6 +842,7 @@ export function doTrain(name) {
     const idx = Math.floor(Math.random() * LAZY_LINE_COUNT);
     toast(t('lazy.' + idx, { name: pet.name }));
     reaction('💢');
+    playRefuseAnim(); // pet trots on, shakes its head "no no", then leaves
     refreshTrain();
     save();
     return;
@@ -1100,8 +1101,10 @@ function renderPetCustom(extra) {
   // v5 (§4/§5): dirty (hygiene<35) or starving forces a sad mood (sad mouth),
   // and dirty also shows the smudge/fly overlay.
   const dirty = pet.stage !== 'egg' && pet.state !== 'dead' && pet.care.hygiene < DIRTY_THRESHOLD;
+  // On strike (after refusing to train) the pet sulks — show it ANGRY.
+  const onStrike = pet.stage !== 'egg' && pet.state !== 'dead' && Date.now() < (pet.trainBlockUntil || 0);
   const sad = pet.care.happiness < 50 || dirty || isStarving(pet);
-  const mood = pet.sleeping ? 'sleepy' : sad ? 'sad' : 'idle';
+  const mood = pet.sleeping ? 'sleepy' : onStrike ? 'angry' : sad ? 'sad' : 'idle';
   // Chubbiness: map weight 30..100 -> 0..1 so a heavier pet looks squatter.
   const chubby = clamp((pet.weight - 30) / 70, 0, 1);
   const opts = {
@@ -1332,6 +1335,24 @@ function playTrainingAnim(name) {
   stage.classList.add('show', 'perform');
   clearTimeout(trainAnimTimer);
   trainAnimTimer = setTimeout(() => stage.classList.remove('perform', 'show'), 2600);
+}
+
+// v11: on a training refusal the pet trots on, shakes its head "no no" (angry
+// face), and trots off — with a 🙅 balloon. Purely cosmetic (CSS-driven).
+let refuseAnimTimer = 0;
+function playRefuseAnim() {
+  const stage = $('train-stage');
+  const svg = $('train-svg');
+  const pet = state.pet;
+  if (!stage || !svg || !pet) return;
+  renderPet(svg, pet.genome, pet.stage, { animate: false, element: pet.genome.element, mood: 'angry' });
+  const emo = $('train-emoji');
+  if (emo) emo.textContent = '🙅';
+  stage.classList.remove('perform', 'refuse');
+  void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
+  stage.classList.add('show', 'refuse');
+  clearTimeout(refuseAnimTimer);
+  refuseAnimTimer = setTimeout(() => stage.classList.remove('refuse', 'show'), 2200);
 }
 
 // ---------------------------------------------------------------------------
