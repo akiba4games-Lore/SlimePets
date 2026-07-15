@@ -207,29 +207,92 @@ const MOVE_POOLS = {
   grass: ['Vine', 'Leaf Blade', 'Bloom'],
   earth: ['Pebble', 'Rock Toss', 'Quake'],
   lightning: ['Spark', 'Zap', 'Bolt'],
-  dark: ['Shade', 'Void'],
-  light: ['Glimmer', 'Radiance'],
+  dark: ['Shade', 'Umbra', 'Void'],
+  light: ['Glimmer', 'Flash', 'Radiance'],
   none: ['Tackle', 'Slam', 'Bonk'],
 };
 
-// The four seed-selectable milestone unlocks for slots 2 & 3.
-const MILESTONES = [
-  { type: 'trainings', value: 3 },
-  { type: 'weight', value: 60 },
+// v9/v10: DATA-DRIVEN per-move stats. Each named move has fixed
+// element/power/cooldown/priority (no per-pet jitter) so balance is predictable
+// and easy to tweak. Tier by pool position: basic (pool[0], fast prio-1),
+// mid (pool[1]), strong (pool[last]). 'none' moves get a small power boost since
+// they can never be super-effective.
+const TIER_STATS = {
+  basic:  { power: 0.9, cooldown: 0, priority: 1 },
+  mid:    { power: 1.4, cooldown: 1, priority: 0 },
+  strong: { power: 2.0, cooldown: 2, priority: 0 },
+};
+const TIER_STATS_NONE = {
+  basic:  { power: 1.0, cooldown: 0, priority: 1 },
+  mid:    { power: 1.6, cooldown: 1, priority: 0 },
+  strong: { power: 2.2, cooldown: 2, priority: 0 },
+};
+
+// The single source of truth for move stats, built from the pools + tiers and
+// keyed by move name (names are unique across pools). getLearnset, rerollMove,
+// learnRandomMove and battleSnapshot all resolve their stats from HERE.
+export const MOVE_STATS = (() => {
+  const table = {};
+  for (const el of Object.keys(MOVE_POOLS)) {
+    const pool = MOVE_POOLS[el];
+    const tiers = el === 'none' ? TIER_STATS_NONE : TIER_STATS;
+    for (let i = 0; i < pool.length; i++) {
+      const tier = i === 0 ? 'basic' : (i === pool.length - 1 ? 'strong' : 'mid');
+      const t = tiers[tier];
+      table[pool[i]] = { element: el, power: t.power, cooldown: t.cooldown, priority: t.priority };
+    }
+  }
+  // Universal Attack: reliable neutral, always usable.
+  table.Attack = { element: 'none', power: 1.0, cooldown: 0, priority: 0 };
+  return table;
+})();
+
+// v10 unlock CONDITIONS per learnset slot (the strong nuke's is drawn per-pet
+// from RANDOM_UNLOCK_POOL). The learnset assigns WHICH named move unlocks at
+// WHICH condition; the move's power/cd/priority come from MOVE_STATS.
+const SLOT_UNLOCKS = {
+  attack:   { type: 'always' },
+  quick:    { type: 'wins', value: 5 },       // 2nd: own-element basic
+  medium:   { type: 'stage', value: 'child' }, // 3rd: own-element mid
+  second:   { type: 'level', value: 6 },       // 5th: 2nd-element mid
+  offheavy: { type: 'wins', value: 20 },       // 6th: off-element strong
+};
+
+// {type:'random'} resolves (deterministically per seed) to ONE of these, so each
+// pet unlocks its big move at a different, surprising milestone.
+const RANDOM_UNLOCK_POOL = [
+  { type: 'level', value: 5 },
+  { type: 'wins', value: 15 },
   { type: 'education', value: 60 },
-  { type: 'wins', value: 3 },
+  { type: 'weight', value: 70 },
+  { type: 'trainings', value: 5 },
 ];
 
 function slug(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
-function makeAbility(id, name, element, power, unlock) {
-  return { id, name, element, power: round2(power), kind: 'attack', unlock };
+function makeAbility(id, name, element, power, unlock, cooldown, priority) {
+  return {
+    id, name, element,
+    power: round2(power),
+    kind: 'attack',
+    cooldown: (cooldown | 0) || 0,
+    priority: (priority | 0) || 0,
+    unlock,
+  };
 }
 
-// getLearnset(pet) — the pet's fixed, ordered ability list (deterministic from
-// seed). Never mutates the pet. Ability ids are unique within the learnset.
+// Build an ability object for a named move, reading its stats from MOVE_STATS.
+function abilityFromTable(id, name, unlock) {
+  const s = MOVE_STATS[name] || { element: 'none', power: 1.0, cooldown: 0, priority: 0 };
+  return makeAbility(id, name, s.element, s.power, unlock, s.cooldown, s.priority);
+}
+
+// getLearnset(pet) — the pet's fixed, ordered ability list of 6 slots
+// (deterministic from seed). Never mutates the pet. Ability ids are unique.
+// The learnset only decides WHICH named move fills each slot and its unlock
+// CONDITION; every move's power/cooldown/priority is read from MOVE_STATS.
 export function getLearnset(pet) {
   const g = (pet && pet.genome) || {};
   const el = ELEMENTS.indexOf(g.element) >= 0 ? g.element : 'none';
@@ -237,41 +300,33 @@ export function getLearnset(pet) {
   // Separate RNG stream from genome so learnsets don't perturb appearance.
   const rng = mulberry32((seed ^ 0x5bd1e995) >>> 0);
 
-  // v5 (§3): the milestone rng draws are still CONSUMED (two draws) so every
-  // move's name/element/power stays byte-identical to v4 for existing seeds —
-  // only the fixed unlock CONDITIONS below change. The drawn indices are unused.
-  Math.floor(rng() * MILESTONES.length);
-  Math.floor(rng() * MILESTONES.length);
-
-  // v5 fixed unlock conditions (§3):
-  //   slot0 Attack — always; slot1 — level 2 (unchanged);
-  //   slot2 (3rd) — win 10 battles; slot3 (4th) — level 3.
-  const UNLOCK_SLOT2 = { type: 'wins', value: 10 };
-  const UNLOCK_SLOT3 = { type: 'level', value: 3 };
+  const ownPool = MOVE_POOLS[el] || MOVE_POOLS.none;
+  const midIdx = Math.min(1, ownPool.length - 1);
 
   const list = [];
   // slot 0 — universal Attack (always known).
-  list.push(makeAbility('attack', 'Attack', 'none', 1.0, { type: 'always' }));
+  list.push(abilityFromTable('attack', 'Attack', { ...SLOT_UNLOCKS.attack }));
+  // slot 1 (m1) — own-element BASIC quick move (fast, prio 1), unlock 5 wins.
+  list.push(abilityFromTable('m1', ownPool[0], { ...SLOT_UNLOCKS.quick }));
+  // slot 2 (m2) — own-element MID move, unlock stage >= child.
+  list.push(abilityFromTable('m2', ownPool[midIdx], { ...SLOT_UNLOCKS.medium }));
 
-  if (el === 'none') {
-    // No-element pets get higher-power non-elemental moves so they still bite.
-    const pool = MOVE_POOLS.none;
-    list.push(makeAbility('m1', pool[0], 'none', 1.15 + rng() * 0.1, { type: 'level', value: 2 }));
-    list.push(makeAbility('m2', pool[pool.length - 1], 'none', 1.35 + rng() * 0.1, { ...UNLOCK_SLOT2 }));
-  } else {
-    const pool = MOVE_POOLS[el];
-    list.push(makeAbility('m1', pool[0], el, 1.05 + rng() * 0.1, { type: 'level', value: 2 }));
-    list.push(makeAbility('m2', pool[pool.length - 1], el, 1.25 + rng() * 0.1, { ...UNLOCK_SLOT2 }));
-  }
+  // slot 3 (m3) — own-element STRONG nuke, unlock = random per-pet (1 rng draw).
+  const ridx = Math.floor(rng() * RANDOM_UNLOCK_POOL.length) % RANDOM_UNLOCK_POOL.length;
+  list.push(abilityFromTable('m3', ownPool[ownPool.length - 1], { ...RANDOM_UNLOCK_POOL[ridx] }));
 
-  // slot 3 — a move of a random element (or none), unlocked at level 3.
-  const el3 = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
-  const pool3 = MOVE_POOLS[el3];
-  const name3 = pool3[Math.floor(rng() * pool3.length) % pool3.length];
-  list.push(makeAbility('m3', name3, el3, 1.15 + rng() * 0.1, { ...UNLOCK_SLOT3 }));
+  // slot 4 (m4) — 2nd-element MID move (random element, 1 rng draw), unlock lvl 6.
+  const el4 = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
+  const pool4 = MOVE_POOLS[el4] || MOVE_POOLS.none;
+  list.push(abilityFromTable('m4', pool4[Math.min(1, pool4.length - 1)], { ...SLOT_UNLOCKS.second }));
 
-  // v5 (§6): apply any ability-reroll overrides (name/element/power only; the
-  // slot id, kind and unlock condition are never overridden).
+  // slot 5 (m5) — off-element STRONG move (random element, 1 rng draw), 20 wins.
+  const el5 = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
+  const pool5 = MOVE_POOLS[el5] || MOVE_POOLS.none;
+  list.push(abilityFromTable('m5', pool5[pool5.length - 1], { ...SLOT_UNLOCKS.offheavy }));
+
+  // v5 (§6): apply any ability-reroll overrides. name/element/power AND (v9)
+  // cooldown/priority may be overridden; the slot id, kind and unlock never are.
   const ov = pet && pet.moveOverrides;
   if (ov && typeof ov === 'object') {
     for (const ab of list) {
@@ -280,6 +335,8 @@ export function getLearnset(pet) {
       if (o.name) ab.name = o.name;
       if (ELEMENTS.indexOf(o.element) >= 0) ab.element = o.element;
       if (typeof o.power === 'number' && isFinite(o.power)) ab.power = round2(o.power);
+      if (Number.isFinite(o.cooldown)) ab.cooldown = Math.max(0, o.cooldown | 0);
+      if (Number.isFinite(o.priority)) ab.priority = o.priority | 0;
     }
   }
 
@@ -299,12 +356,153 @@ export function rerollMove(pet, slotId) {
   // Only reroll a slot that actually exists in this pet's learnset.
   if (!getLearnset(pet).some((a) => a.id === slotId)) return null;
   const rng = mulberry32(randomSeed());
-  const el = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
-  const pool = MOVE_POOLS[el] || MOVE_POOLS.none;
-  const name = pool[Math.floor(rng() * pool.length) % pool.length];
-  const power = round2(1.1 + rng() * 0.35);
-  pet.moveOverrides[slotId] = { name, element: el, power };
+  // Pick a random named move FROM the stats table and take its real stats.
+  const names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
+  const name = names[Math.floor(rng() * names.length) % names.length];
+  const s = MOVE_STATS[name];
+  pet.moveOverrides[slotId] = {
+    name, element: s.element, power: s.power, cooldown: s.cooldown, priority: s.priority,
+  };
   return getLearnset(pet).find((a) => a.id === slotId) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Known moves & equip system (DESIGN_v10). Known = the pet's unlocked move ids
+// (pet.moves, may exceed the 6-slot learnset once special extras are learned).
+// Equipped = up to 4 known ids actually taken into battle (pet.equipped).
+// ---------------------------------------------------------------------------
+
+// Special-training extras (learnRandomMove) resolved to full ability objects.
+export function getExtraMoves(pet) {
+  const out = [];
+  const extras = pet && Array.isArray(pet.extraMoves) ? pet.extraMoves : [];
+  for (const e of extras) {
+    if (!e || typeof e !== 'object' || typeof e.id !== 'string') continue;
+    out.push({
+      id: e.id,
+      name: typeof e.name === 'string' ? e.name : e.id,
+      element: ELEMENTS.indexOf(e.element) >= 0 ? e.element : 'none',
+      power: round2(typeof e.power === 'number' && isFinite(e.power) ? e.power : 1.0),
+      kind: 'attack',
+      cooldown: Number.isFinite(e.cooldown) ? Math.max(0, e.cooldown | 0) : 0,
+      priority: Number.isFinite(e.priority) ? (e.priority | 0) : 0,
+      unlock: { type: 'always' },
+    });
+  }
+  return out;
+}
+
+// The full resolution pool of every ability a pet could reference by id:
+// the 6 learnset slots + any special extras. (Not filtered by unlock state.)
+function allAbilities(pet) {
+  return [...getLearnset(pet), ...getExtraMoves(pet)];
+}
+
+// The pet's KNOWN (unlocked) ability ids, Attack always first.
+function knownIds(pet) {
+  const arr = (pet && Array.isArray(pet.moves)) ? pet.moves.slice() : ['attack'];
+  const i = arr.indexOf('attack');
+  if (i < 0) arr.unshift('attack');
+  else if (i > 0) { arr.splice(i, 1); arr.unshift('attack'); }
+  return arr;
+}
+
+// getKnownMoves(pet) — resolved ability objects for every KNOWN id (incl. extras).
+export function getKnownMoves(pet) {
+  const pool = new Map(allAbilities(pet).map((a) => [a.id, a]));
+  const out = [];
+  const seen = new Set();
+  for (const id of knownIds(pet)) {
+    if (seen.has(id)) continue;
+    const ab = pool.get(id);
+    if (ab) { out.push(ab); seen.add(id); }
+  }
+  return out;
+}
+
+// Default equipped set: the first <=4 known ids (Attack first). Never empty.
+function defaultEquipped(pet) {
+  const eq = [];
+  for (const id of knownIds(pet)) {
+    if (eq.length >= 4) break;
+    if (eq.indexOf(id) < 0) eq.push(id);
+  }
+  if (eq.length === 0) eq.push('attack');
+  return eq;
+}
+
+// getEquipped(pet) — resolved ability objects for equipped ids, validated
+// against known ids. Falls back to [Attack] if nothing valid is equipped.
+export function getEquipped(pet) {
+  if (!pet) return [];
+  const pool = new Map(allAbilities(pet).map((a) => [a.id, a]));
+  const known = new Set(knownIds(pet));
+  const eq = Array.isArray(pet.equipped) ? pet.equipped : [];
+  const out = [];
+  const seen = new Set();
+  for (const id of eq) {
+    if (!known.has(id) || seen.has(id)) continue;
+    const ab = pool.get(id);
+    if (ab) { out.push(ab); seen.add(id); }
+    if (out.length >= 4) break;
+  }
+  if (out.length === 0) {
+    const atk = pool.get('attack');
+    if (atk) out.push(atk);
+  }
+  return out;
+}
+
+// equipMove(pet, id) — equip a KNOWN move (max 4). Returns true on success.
+export function equipMove(pet, id) {
+  if (!pet || !id) return false;
+  if (!Array.isArray(pet.equipped)) pet.equipped = defaultEquipped(pet);
+  if (!new Set(knownIds(pet)).has(id)) return false;   // only known ids
+  if (pet.equipped.indexOf(id) >= 0) return true;       // already equipped
+  if (pet.equipped.length >= 4) return false;           // max 4
+  pet.equipped.push(id);
+  return true;
+}
+
+// unequipMove(pet, id) — remove a move, but never drop below 1 equipped.
+export function unequipMove(pet, id) {
+  if (!pet || !id || !Array.isArray(pet.equipped)) return false;
+  const idx = pet.equipped.indexOf(id);
+  if (idx < 0) return false;
+  if (pet.equipped.length <= 1) return false;           // keep >= 1
+  pet.equipped.splice(idx, 1);
+  return true;
+}
+
+// learnRandomMove(pet) — Special-training reward (DESIGN_v10). Teaches a brand
+// new random move (stats from MOVE_STATS) with a fresh unique id (sp1, sp2, …)
+// stored in pet.extraMoves, added to the known pool, auto-equipped if a slot is
+// free. Returns the resolved ability object.
+export function learnRandomMove(pet) {
+  if (!pet) return null;
+  if (!Array.isArray(pet.extraMoves)) pet.extraMoves = [];
+  if (!Array.isArray(pet.moves)) pet.moves = ['attack'];
+  if (!Array.isArray(pet.equipped) || pet.equipped.length === 0) pet.equipped = defaultEquipped(pet);
+
+  const rng = mulberry32(randomSeed());
+  const names = Object.keys(MOVE_STATS).filter((n) => n !== 'Attack');
+  const name = names[Math.floor(rng() * names.length) % names.length];
+  const s = MOVE_STATS[name];
+
+  // Fresh unique id: sp1, sp2, … avoiding any existing extra ids.
+  const existing = new Set(pet.extraMoves.map((e) => e && e.id));
+  let n = pet.extraMoves.length + 1;
+  let id;
+  do { id = 'sp' + n; n += 1; } while (existing.has(id) || pet.moves.indexOf(id) >= 0);
+
+  const stored = {
+    id, name, element: s.element, power: s.power, cooldown: s.cooldown, priority: s.priority,
+  };
+  pet.extraMoves.push(stored);
+  if (pet.moves.indexOf(id) < 0) pet.moves.push(id);
+  if (pet.equipped.length < 4 && pet.equipped.indexOf(id) < 0) pet.equipped.push(id);
+
+  return { id, name, element: s.element, power: s.power, kind: 'attack', cooldown: s.cooldown, priority: s.priority, unlock: { type: 'always' } };
 }
 
 function unlockMet(unlock, pet) {
@@ -316,15 +514,23 @@ function unlockMet(unlock, pet) {
     case 'weight': return (pet.weight || 0) >= unlock.value;
     case 'education': return (pet.education || 0) >= unlock.value;
     case 'wins': return (pet.battleWins || 0) >= unlock.value;
-    default: return false;
+    case 'stage': {
+      // Met once the pet's stage index reaches (or passes) the required stage.
+      const cur = STAGE_ORDER.indexOf(pet.stage);
+      const need = STAGE_ORDER.indexOf(unlock.value);
+      return need >= 0 && cur >= need;
+    }
+    default: return false; // 'random' is resolved to a concrete type at build time
   }
 }
 
 // checkUnlocks(pet) — add any newly-satisfied ability ids to pet.moves and
 // return the freshly-unlocked ability objects (so the caller can toast them).
+// Auto-equips each newly-learned move if an equip slot is free (<4).
 export function checkUnlocks(pet) {
   if (!pet) return [];
   if (!Array.isArray(pet.moves)) pet.moves = ['attack'];
+  if (!Array.isArray(pet.equipped) || pet.equipped.length === 0) pet.equipped = defaultEquipped(pet);
   const learnset = getLearnset(pet);
   const newly = [];
   for (const ab of learnset) {
@@ -332,6 +538,7 @@ export function checkUnlocks(pet) {
     if (unlockMet(ab.unlock, pet)) {
       pet.moves.push(ab.id);
       newly.push(ab);
+      if (pet.equipped.length < 4 && pet.equipped.indexOf(ab.id) < 0) pet.equipped.push(ab.id);
     }
   }
   return newly;
@@ -345,7 +552,7 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 7,
+    version: 8,
     name: (name && String(name).trim()) || 'Slime',
     genome,
     stage: 'egg',
@@ -380,7 +587,9 @@ export function createPet(name, seed) {
     lastMisbehaviorAt: 0, // timestamp of last refusal (feeds Scold)
     // v4 combat & lifecycle -------------------------------------------------
     moves: ['attack'], // unlocked ability ids (see getLearnset / checkUnlocks)
-    moveOverrides: {}, // v5: per-slot ability reroll overrides {id:{name,element,power}} (§6 shop)
+    equipped: ['attack'], // v10: up to 4 known ids taken into battle (never empty)
+    extraMoves: [], // v10: special-training learned moves {id,name,element,power,cooldown,priority}
+    moveOverrides: {}, // v5: per-slot ability reroll overrides {id:{name,element,power,cooldown,priority}} (§6 shop)
     trainingsDone: 0, // completed training sessions (feeds 'trainings' unlocks)
     battleWins: 0, // battles won (feeds 'wins' unlocks)
     // v5: food-boredom tracking (§2) — 3× the same food in a row hits happiness.
@@ -448,17 +657,24 @@ export function battleSnapshot(pet) {
   const cur = typeof pet.hpCurrent === 'number' && isFinite(pet.hpCurrent)
     ? clampHp(pet.hpCurrent, stats.hp)
     : stats.hp;
-  // Resolve the pet's unlocked move ids to full ability objects so the engine
-  // and the opponent's AI are self-contained (DESIGN v4 §3).
-  const learnset = getLearnset(pet);
-  const byId = new Map(learnset.map((a) => [a.id, a]));
-  const moves = (Array.isArray(pet.moves) ? pet.moves : ['attack'])
+  // Resolve the pet's EQUIPPED move ids (DESIGN_v10, <=4) to full ability
+  // objects — incl. cooldown/priority (DESIGN_v9) — so the engine and the
+  // opponent's AI are self-contained. If nothing is equipped, fall back to Attack.
+  const known = new Set(knownIds(pet));
+  const byId = new Map(allAbilities(pet).map((a) => [a.id, a]));
+  const equipped = (Array.isArray(pet.equipped) && pet.equipped.length > 0)
+    ? pet.equipped
+    : defaultEquipped(pet);
+  const seenMove = new Set();
+  const moves = equipped
+    .filter((id) => known.has(id) && !seenMove.has(id) && seenMove.add(id))
     .map((id) => byId.get(id))
     .filter(Boolean)
-    .map((a) => ({ id: a.id, name: a.name, element: a.element, power: a.power, kind: a.kind }));
+    .slice(0, 4)
+    .map((a) => ({ id: a.id, name: a.name, element: a.element, power: a.power, kind: a.kind, cooldown: a.cooldown | 0, priority: a.priority | 0 }));
   if (moves.length === 0) {
     const atk = byId.get('attack');
-    if (atk) moves.push({ id: atk.id, name: atk.name, element: atk.element, power: atk.power, kind: atk.kind });
+    if (atk) moves.push({ id: atk.id, name: atk.name, element: atk.element, power: atk.power, kind: atk.kind, cooldown: atk.cooldown | 0, priority: atk.priority | 0 });
   }
   return {
     name: pet.name,
@@ -550,7 +766,7 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 7;
+  pet.version = 8;
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -605,11 +821,39 @@ export function deserializePet(obj) {
   pet.sick = !!pet.sick;
   pet.illTimer = Math.max(0, num(pet.illTimer, 0));
   if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') pet.moveOverrides = {};
-  // Moves: keep only ids that still exist in this pet's learnset; always know Attack.
+  // v10: special-training extras {id,name,element,power,cooldown,priority}.
+  const rawExtra = Array.isArray(obj.extraMoves) ? obj.extraMoves : [];
+  const extraSeen = new Set();
+  pet.extraMoves = [];
+  for (const e of rawExtra) {
+    if (!e || typeof e !== 'object' || typeof e.id !== 'string' || extraSeen.has(e.id)) continue;
+    extraSeen.add(e.id);
+    pet.extraMoves.push({
+      id: e.id,
+      name: typeof e.name === 'string' ? e.name : e.id,
+      element: ELEMENTS.indexOf(e.element) >= 0 ? e.element : 'none',
+      power: round2(typeof e.power === 'number' && isFinite(e.power) ? e.power : 1.0),
+      cooldown: Number.isFinite(e.cooldown) ? Math.max(0, e.cooldown | 0) : 0,
+      priority: Number.isFinite(e.priority) ? (e.priority | 0) : 0,
+    });
+  }
+  // Moves: keep ids that exist in this pet's learnset OR its extras; always know Attack.
   const validIds = new Set(getLearnset(pet).map((a) => a.id));
+  for (const e of pet.extraMoves) validIds.add(e.id);
   const stored = Array.isArray(obj.moves) ? obj.moves : ['attack'];
   const seen = new Set();
   pet.moves = stored.filter((id) => validIds.has(id) && !seen.has(id) && seen.add(id));
   if (pet.moves.indexOf('attack') < 0) pet.moves.unshift('attack');
+  // v10: equipped = up to 4 KNOWN ids (validated); default = first <=4 known
+  // (Attack first). Never empty. Old saves with no `equipped` get the default.
+  const knownSet = new Set(pet.moves);
+  const rawEq = Array.isArray(obj.equipped) ? obj.equipped : null;
+  if (rawEq) {
+    const eqSeen = new Set();
+    pet.equipped = rawEq.filter((id) => knownSet.has(id) && !eqSeen.has(id) && eqSeen.add(id)).slice(0, 4);
+  } else {
+    pet.equipped = [];
+  }
+  if (pet.equipped.length === 0) pet.equipped = defaultEquipped(pet);
   return pet;
 }

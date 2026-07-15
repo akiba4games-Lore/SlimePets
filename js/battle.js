@@ -79,12 +79,13 @@ const SHAPES_SPECIAL = {
 };
 
 // Basic fallback move for snapshots that don't carry a moveset (old rivals / QR).
-const DEFAULT_MOVE = { id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack' };
+const DEFAULT_MOVE = { id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 };
 
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+// Back-compat: moves missing cooldown/priority (older snapshots) default to 0.
 function normalizeMoves(snap) {
   if (Array.isArray(snap.moves) && snap.moves.length > 0) {
     return snap.moves.map((m) => ({
@@ -93,6 +94,8 @@ function normalizeMoves(snap) {
       element: m.element || 'none',
       power: typeof m.power === 'number' && isFinite(m.power) ? m.power : 1.0,
       kind: m.kind || 'attack',
+      cooldown: Number.isFinite(m.cooldown) ? Math.max(0, m.cooldown | 0) : 0,
+      priority: Number.isFinite(m.priority) ? (m.priority | 0) : 0,
     }));
   }
   return [clone(DEFAULT_MOVE)];
@@ -123,6 +126,7 @@ function makeFighter(snap) {
     guarding: false,
     specialUsed: false,
     fainted: false,
+    cd: {}, // v9: moveId -> cooldown turns remaining (serializable)
   };
 }
 
@@ -143,24 +147,39 @@ export function createBattle(snapA, snapB, seed) {
 }
 
 /**
- * legalActions(state, side) -> [...knownMoveIds]
- * v4: actions are ONLY the fighter's learned moves — Guard, Special and Charge
- * are all retired. A fighter always knows at least 'attack', so this is never
- * empty. (The guard/special branches in applyTurn are kept as dead code for
- * back-compat but are never reachable, since nothing offers those actions.)
+ * legalActions(state, side) -> [...usableMoveIds]
+ * v4: actions are ONLY the fighter's equipped moves — Guard, Special and Charge
+ * are all retired. v9: a move is legal only if its cooldown has elapsed
+ * ((cd[id]||0)===0). A fighter always has at least one usable move (Attack is
+ * cd 0), so this is never empty.
  */
 export function legalActions(state, side) {
   const f = state[side];
   const actions = [];
   if (f && Array.isArray(f.moves)) {
-    for (const m of f.moves) actions.push(m.id);
+    const cd = f.cd || {};
+    for (const m of f.moves) {
+      if ((cd[m.id] || 0) === 0) actions.push(m.id);
+    }
   }
-  if (actions.length === 0) actions.push('attack');
+  if (actions.length === 0) {
+    // Should not happen (Attack is cd 0), but never return an empty list.
+    if (f && Array.isArray(f.moves) && f.moves[0]) actions.push(f.moves[0].id);
+    else actions.push('attack');
+  }
   return actions;
 }
 
 function otherSide(side) {
   return side === 'A' ? 'B' : 'A';
+}
+
+// Priority of a chosen action for turn-order (v9). Move ids read their move's
+// priority; guard/special (retired, dead-code) and unknown ids count as 0.
+function actionPriority(fighter, action) {
+  if (action === 'guard' || action === 'special') return 0;
+  const m = fighter && Array.isArray(fighter.moves) && fighter.moves.find((mv) => mv.id === action);
+  return m ? (m.priority | 0) : 0;
 }
 
 /**
@@ -278,14 +297,23 @@ export function applyTurn(state, actionA, actionB) {
 
   const fA = s.A;
   const fB = s.B;
+  // Back-compat: states from older snapshots may lack a cd map.
+  if (!fA.cd) fA.cd = {};
+  if (!fB.cd) fB.cd = {};
 
   // Reset guard flags each turn (guard only protects during the turn it's chosen)
   fA.guarding = actionA === 'guard';
   fB.guarding = actionB === 'guard';
 
-  // Determine turn order by spd; tie -> seeded coin flip
+  // Turn order: v9 compare chosen moves' PRIORITY first (higher acts first) so a
+  // prio-1 "quick" move beats a prio-0 move regardless of spd; tie on priority
+  // -> spd; tie on spd -> seeded coin flip. Guard/special count as priority 0.
+  const prioA = actionPriority(fA, actionA);
+  const prioB = actionPriority(fB, actionB);
   let order;
-  if (fA.spd === fB.spd) {
+  if (prioA !== prioB) {
+    order = prioA > prioB ? ['A', 'B'] : ['B', 'A'];
+  } else if (fA.spd === fB.spd) {
     order = rngNext(s) < 0.5 ? ['A', 'B'] : ['B', 'A'];
   } else {
     order = fA.spd > fB.spd ? ['A', 'B'] : ['B', 'A'];
@@ -293,6 +321,9 @@ export function applyTurn(state, actionA, actionB) {
 
   const actions = { A: actionA, B: actionB };
   const fighters = { A: fA, B: fB };
+  // Track cd-bearing moves actually used this turn; their cooldowns are applied
+  // AFTER the end-of-turn decrement so a cd:N move is unusable for exactly N turns.
+  const usedCdMove = { A: null, B: null };
 
   for (const side of order) {
     const opp = otherSide(side);
@@ -312,10 +343,16 @@ export function applyTurn(state, actionA, actionB) {
       }
     } else {
       // Treat as a move id: look it up in the fighter's moveset.
-      const move = (fighter.moves && fighter.moves.find((m) => m.id === action))
-        || (fighter.moves && fighter.moves[0])
-        || DEFAULT_MOVE;
+      const cd = fighter.cd;
+      let move = fighter.moves && fighter.moves.find((m) => m.id === action);
+      // Guard: if the requested move is on cooldown (shouldn't happen), fall
+      // back to the fighter's first available (cd 0) move.
+      if (move && (cd[move.id] || 0) > 0) {
+        move = (fighter.moves && fighter.moves.find((m) => (cd[m.id] || 0) === 0)) || move;
+      }
+      if (!move) move = (fighter.moves && fighter.moves[0]) || DEFAULT_MOVE;
       computeDamage(s, fighter, opponent, move, events, side);
+      if ((move.cooldown | 0) > 0) usedCdMove[side] = move;
     }
 
     const w = decideWinner(s);
@@ -324,6 +361,18 @@ export function applyTurn(state, actionA, actionB) {
       s.over = true;
       break;
     }
+  }
+
+  // v9 end-of-turn cooldown bookkeeping: decrement every existing cd entry for
+  // BOTH fighters (min 0), THEN stamp the just-used cd moves so they aren't
+  // decremented on the turn they were used (=> exactly N turns of lockout).
+  for (const side of ['A', 'B']) {
+    const cd = fighters[side].cd;
+    for (const k of Object.keys(cd)) cd[k] = Math.max(0, (cd[k] | 0) - 1);
+  }
+  for (const side of ['A', 'B']) {
+    const m = usedCdMove[side];
+    if (m && (m.cooldown | 0) > 0) fighters[side].cd[m.id] = m.cooldown | 0;
   }
 
   if (!s.over) {

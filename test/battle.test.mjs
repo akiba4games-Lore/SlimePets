@@ -304,6 +304,161 @@ for (let i = 0; i < NUM_BATTLES; i++) {
   assertTrue(state.over, 'legacy battle concluded');
 }
 
+// ---------------------------------------------------------------------------
+// v9: COOLDOWNS. A cd:2 move, once used, is NOT legal for exactly the next 2
+// turns, then becomes legal again on the 3rd turn. Fighters have huge HP so the
+// battle never ends during the window.
+// ---------------------------------------------------------------------------
+{
+  const attack = { id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 };
+  const nuke = { id: 'nuke', name: 'Nuke', element: 'none', power: 2.0, kind: 'attack', cooldown: 2, priority: 0 };
+  const snapCd = {
+    name: 'CDUser', stage: 'adult', level: 10,
+    genome: { bodyShape: 'blob', seed: 1 }, element: 'none',
+    moves: [attack, nuke],
+    stats: { hp: 99999, str: 12, spd: 10, def: 5, crit: 1 },
+  };
+  const snapOpp = {
+    name: 'Punchbag', stage: 'adult', level: 10,
+    genome: { bodyShape: 'square', seed: 2 }, element: 'none',
+    moves: [attack],
+    stats: { hp: 99999, str: 8, spd: 8, def: 5, crit: 1 },
+  };
+
+  let state = createBattle(snapCd, snapOpp, 0x1234);
+  assertTrue(legalActions(state, 'A').includes('nuke'), 'cooldown: nuke legal before use');
+
+  // Turn 1: A uses the cd:2 nuke.
+  state = applyTurn(state, 'nuke', 'attack').state;
+  // Turn 2: nuke on cooldown (1st locked turn).
+  assertTrue(!legalActions(state, 'A').includes('nuke'), 'cooldown: nuke NOT legal on turn +1');
+  state = applyTurn(state, 'attack', 'attack').state;
+  // Turn 3: still on cooldown (2nd locked turn).
+  assertTrue(!legalActions(state, 'A').includes('nuke'), 'cooldown: nuke NOT legal on turn +2');
+  state = applyTurn(state, 'attack', 'attack').state;
+  // Turn 4: cooldown elapsed — legal again (exactly 2 turns of lockout).
+  assertTrue(legalActions(state, 'A').includes('nuke'), 'cooldown: nuke legal again on turn +3');
+
+  // If a move on cooldown is somehow requested, applyTurn must not crash and
+  // must fall back to an available move (the fighter still acts).
+  let state2 = createBattle(snapCd, snapOpp, 0x99);
+  state2 = applyTurn(state2, 'nuke', 'attack').state; // nuke now on cd
+  const res = applyTurn(state2, 'nuke', 'attack');    // request it again (illegal)
+  assertTrue(res.events.some((e) => e.type === 'hit' || e.type === 'crit'), 'cooldown: on-cd request falls back to a usable move (no crash)');
+}
+
+// ---------------------------------------------------------------------------
+// v9: PRIORITY. A prio-1 move resolves before a prio-0 move even when its user
+// has far lower spd.
+// ---------------------------------------------------------------------------
+{
+  const quick = { id: 'quick', name: 'Quick', element: 'none', power: 0.9, kind: 'attack', cooldown: 0, priority: 1 };
+  const attack = { id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 };
+  const slowFast = { // low spd, but has a priority-1 move
+    name: 'Turtle', stage: 'adult', level: 10,
+    genome: { bodyShape: 'blob', seed: 3 }, element: 'none',
+    moves: [attack, quick],
+    stats: { hp: 99999, str: 20, spd: 1, def: 5, crit: 1 },
+  };
+  const fastSlow = { // high spd, only a priority-0 move
+    name: 'Hare', stage: 'adult', level: 10,
+    genome: { bodyShape: 'drop', seed: 4 }, element: 'none',
+    moves: [attack],
+    stats: { hp: 99999, str: 20, spd: 99, def: 5, crit: 1 },
+  };
+
+  // A (low spd) uses the priority move; B (high spd) uses a normal attack.
+  const r = applyTurn(createBattle(slowFast, fastSlow, 0x2222), 'quick', 'attack');
+  const firstHit = r.events.find((e) => e.type === 'hit' || e.type === 'crit');
+  assertTrue(firstHit && firstHit.side === 'A', 'priority: prio-1 (low-spd A) acts before prio-0 (high-spd B)');
+
+  // Sanity: WITHOUT the priority move, high-spd B would act first.
+  const rNorm = applyTurn(createBattle(slowFast, fastSlow, 0x2222), 'attack', 'attack');
+  const firstHitNorm = rNorm.events.find((e) => e.type === 'hit' || e.type === 'crit');
+  assertTrue(firstHitNorm && firstHitNorm.side === 'B', 'priority: with equal priority, higher spd (B) acts first');
+}
+
+// ---------------------------------------------------------------------------
+// v9: DETERMINISM preserved with cooldowns + priority. Same snaps + seed +
+// action script => deep-equal event logs across replays.
+// ---------------------------------------------------------------------------
+{
+  const attack = { id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 };
+  const quick = { id: 'quick', name: 'Quick', element: 'fire', power: 0.9, kind: 'attack', cooldown: 0, priority: 1 };
+  const nuke = { id: 'nuke', name: 'Nuke', element: 'fire', power: 2.0, kind: 'attack', cooldown: 2, priority: 0 };
+  const snapP = {
+    name: 'Pyro', stage: 'teen', level: 8, genome: { bodyShape: 'blob', seed: 11 }, element: 'fire',
+    moves: [attack, quick, nuke], stats: { hp: 140, str: 22, spd: 14, def: 8, crit: 3 },
+  };
+  const snapQ = {
+    name: 'Sprout', stage: 'teen', level: 8, genome: { bodyShape: 'drop', seed: 22 }, element: 'grass',
+    moves: [attack, { id: 'gnuke', name: 'GNuke', element: 'grass', power: 2.0, kind: 'attack', cooldown: 2, priority: 0 }],
+    stats: { hp: 140, str: 20, spd: 13, def: 9, crit: 3 },
+  };
+  const script = [
+    ['nuke', 'gnuke'], ['quick', 'attack'], ['attack', 'gnuke'], ['nuke', 'attack'],
+    ['quick', 'gnuke'], ['nuke', 'attack'], ['attack', 'attack'], ['quick', 'gnuke'],
+    ['nuke', 'attack'], ['quick', 'attack'],
+  ];
+  function runCd(seed) {
+    let state = createBattle(snapP, snapQ, seed);
+    const log = [];
+    for (const [a, b] of script) {
+      if (state.over) break;
+      const la = legalActions(state, 'A');
+      const lb = legalActions(state, 'B');
+      const actA = la.includes(a) ? a : la[0];
+      const actB = lb.includes(b) ? b : lb[0];
+      const res = applyTurn(state, actA, actB);
+      state = res.state;
+      log.push(...res.events);
+    }
+    return { log, winner: state.winner };
+  }
+  const c1 = runCd(0xCAFE);
+  const c2 = runCd(0xCAFE);
+  assertTrue(deepEqual(c1.log, c2.log), 'cd+priority determinism: same seed => deep-equal event log');
+  assertTrue(c1.winner === c2.winner, 'cd+priority determinism: same seed => same winner');
+  const c3 = runCd(0xBEEF);
+  assertTrue(!deepEqual(c1.log, c3.log), 'cd+priority: different seed diverges');
+}
+
+// ---------------------------------------------------------------------------
+// v9 back-compat: a snapshot whose moves LACK cooldown/priority (older saves)
+// must default them to 0 and still battle to completion without throwing.
+// ---------------------------------------------------------------------------
+{
+  const snapOld = {
+    name: 'Legacy9', stage: 'teen', level: 6, genome: { bodyShape: 'blob', seed: 77 }, element: 'fire',
+    moves: [
+      { id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack' }, // no cooldown/priority
+      { id: 'ember', name: 'Ember', element: 'fire', power: 1.4, kind: 'attack' },
+    ],
+    stats: { hp: 90, str: 18, spd: 12, def: 8, crit: 3 },
+  };
+  const st = createBattle(snapOld, snapOld, 0x0BAD);
+  assertTrue(st.A.moves.every((m) => m.cooldown === 0 && m.priority === 0),
+    'back-compat: moves missing cooldown/priority default to 0');
+
+  let state = st;
+  const rng = mulberry32(0xF11E);
+  let turns = 0;
+  let threw = false;
+  try {
+    while (!state.over && turns < MAX_TURNS) {
+      const a = pickAction(state, 'A', rng);
+      const b = pickAction(state, 'B', rng);
+      state = applyTurn(state, a, b).state;
+      turns += 1;
+    }
+  } catch (err) {
+    threw = true;
+    console.error(`FAIL: back-compat battle threw: ${err.stack || err}`);
+  }
+  assertTrue(!threw, 'back-compat: battle without cooldown/priority runs without throwing');
+  assertTrue(state.over, 'back-compat: battle concluded');
+}
+
 console.log(`\n${passed} assertions passed, ${failures} failed (over ${NUM_BATTLES} battles).`);
 
 if (failures > 0) {

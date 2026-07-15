@@ -22,9 +22,38 @@ const MOVE_POOLS = {
   grass: ['Vine', 'Leaf Blade', 'Bloom'],
   earth: ['Pebble', 'Rock Toss', 'Quake'],
   lightning: ['Spark', 'Zap', 'Bolt'],
-  dark: ['Shade', 'Void'],
-  light: ['Glimmer', 'Radiance'],
+  dark: ['Shade', 'Umbra', 'Void'],
+  light: ['Glimmer', 'Flash', 'Radiance'],
 };
+
+// v9 data-driven move stats (mirror of pet.js MOVE_STATS; battle-ai stays a
+// standalone module and does not import pet.js). Tier by pool position: basic
+// (pool[0], fast prio-1), mid (pool[1]), strong (pool[last]); 'none' gets a
+// small power boost since it's never super-effective.
+const TIER_STATS = {
+  basic:  { power: 0.9, cooldown: 0, priority: 1 },
+  mid:    { power: 1.4, cooldown: 1, priority: 0 },
+  strong: { power: 2.0, cooldown: 2, priority: 0 },
+};
+const TIER_STATS_NONE = {
+  basic:  { power: 1.0, cooldown: 0, priority: 1 },
+  mid:    { power: 1.6, cooldown: 1, priority: 0 },
+  strong: { power: 2.2, cooldown: 2, priority: 0 },
+};
+const MOVE_STATS = (() => {
+  const table = {};
+  for (const el of Object.keys(MOVE_POOLS)) {
+    const pool = MOVE_POOLS[el];
+    const tiers = el === 'none' ? TIER_STATS_NONE : TIER_STATS;
+    for (let i = 0; i < pool.length; i++) {
+      const tier = i === 0 ? 'basic' : (i === pool.length - 1 ? 'strong' : 'mid');
+      const t = tiers[tier];
+      table[pool[i]] = { element: el, power: t.power, cooldown: t.cooldown, priority: t.priority };
+    }
+  }
+  table.Attack = { element: 'none', power: 1.0, cooldown: 0, priority: 0 };
+  return table;
+})();
 
 const STAGE_BY_LEVEL = (level) => {
   if (level <= 1) return 'baby';
@@ -74,30 +103,33 @@ function moveId(name) {
 }
 
 /**
- * Build a small typed moveset (2-3 moves) for a fighter of `element`.
- * Always includes a basic Attack (element none, power 1.0). Adds 1-2 elemental
- * moves of the pet's own element. If element==='none', extra moves are stronger
- * non-elemental "power" moves (still element none) so no-element pets aren't
- * dead weight (DESIGN_v4.md §2).
+ * Build a small typed moveset for a fighter of `element` (v9 cooldown/priority).
+ * Always includes a basic Attack (none, power 1.0, cd0, prio0). Adds a FAST
+ * low-power move (own-element basic, prio 1) and a STRONGER move with a 1-2 turn
+ * cooldown (own-element mid or strong tier). All stats come from MOVE_STATS.
  */
 export function generateMoveset(element, rng) {
-  const moves = [{ id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack' }];
-
   const el = element || 'none';
   const pool = MOVE_POOLS[el] || MOVE_POOLS.none;
-  const extraCount = 1 + Math.floor(rng() * 2); // 1 or 2
+  const moves = [{ id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 }];
 
-  // Choose distinct named moves from the pool, in ascending strength order.
-  const start = 1 % pool.length; // skip the plain slot-0 flavor where possible
-  for (let i = 0; i < extraCount; i++) {
-    const idx = Math.min(pool.length - 1, start + i);
-    const name = pool[idx];
-    // stronger of two extra moves gets a touch more power
-    const basePow = el === 'none' ? 1.15 : 1.1;
-    const power = round2(basePow + (i * 0.2) + rng() * 0.1);
+  // Fast low-power move: own-element basic (priority 1).
+  {
+    const name = pool[0];
+    const s = MOVE_STATS[name];
     const id = moveId(name);
-    if (moves.some((m) => m.id === id)) continue;
-    moves.push({ id, name, element: el, power, kind: 'attack' });
+    if (!moves.some((m) => m.id === id)) {
+      moves.push({ id, name, element: s.element, power: s.power, kind: 'attack', cooldown: s.cooldown, priority: s.priority });
+    }
+  }
+  // Stronger move with a 1-2 turn cooldown: mid or strong tier (coin flip).
+  {
+    const useStrong = rng() < 0.5;
+    const name = useStrong ? pool[pool.length - 1] : pool[Math.min(1, pool.length - 1)];
+    const s = MOVE_STATS[name];
+    let id = moveId(name);
+    if (moves.some((m) => m.id === id)) id = `${id}_2`;
+    moves.push({ id, name, element: s.element, power: s.power, kind: 'attack', cooldown: s.cooldown, priority: s.priority });
   }
   return moves;
 }
@@ -170,9 +202,10 @@ export function generateWildOpponent(level, seed) {
 
 /**
  * pickAction(state, side, rng) -> a move id
- * v4: actions are ONLY learned moves (Guard/Special/Charge retired). The AI
- * picks the move with the best expected damage (power × typeMult vs the
- * opponent's element). Uses the passed rng (no Math.random).
+ * v4: actions are ONLY learned moves (Guard/Special/Charge retired). v9: the AI
+ * only considers LEGAL (non-cooldown) moves, then picks the best expected damage
+ * (power × typeMult vs the opponent's element) — so it saves the big move while
+ * it recharges and falls back to cheaper moves. Uses the passed rng (no Math.random).
  */
 export function pickAction(state, side, rng) {
   const fighter = state[side];
@@ -180,11 +213,13 @@ export function pickAction(state, side, rng) {
   const fallbackId = (fighter && Array.isArray(fighter.moves) && fighter.moves[0] && fighter.moves[0].id) || 'attack';
   if (!fighter || fighter.fainted) return fallbackId;
 
-  // Pick the move with the best expected damage accounting for type
-  // effectiveness vs the opponent's element.
-  const moves = (Array.isArray(fighter.moves) && fighter.moves.length > 0)
+  const all = (Array.isArray(fighter.moves) && fighter.moves.length > 0)
     ? fighter.moves
-    : [{ id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack' }];
+    : [{ id: 'attack', name: 'Attack', element: 'none', power: 1.0, kind: 'attack', cooldown: 0, priority: 0 }];
+  // Only moves whose cooldown has elapsed are legal choices this turn.
+  const cd = fighter.cd || {};
+  const legal = all.filter((m) => (cd[m.id] || 0) === 0);
+  const moves = legal.length > 0 ? legal : all;
   const defElement = opp ? opp.element : 'none';
 
   let best = moves[0];
