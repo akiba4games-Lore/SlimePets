@@ -676,7 +676,9 @@ export function createPet(name, seed) {
     care: { hunger: 80, happiness: 80, hygiene: 80 },
     hpCurrent: 0, // set to max HP just below (needs the full pet for computeStats)
     coins: 400, // v5: a fresh pet / new egg starts with 400 coins (§1)
-    lastFreeHealAt: 0, // timestamp of the last free heal (4h cooldown)
+    lastFreeHealAt: 0, // (legacy, unused) timestamp of the last free heal
+    healCharges: 3, // 🩹 Heal charges (each = +50% HP); refills 1 / 4h up to 3
+    healRefillAt: 0, // ms of the next heal-charge refill (0 = full)
     lastEggAt: 0, // v5: timestamp of the last MANUAL "Hatch a New Egg" (4h cooldown §7)
     level: 1,
     xp: 0,
@@ -907,6 +909,9 @@ export function deserializePet(obj) {
   // v3 heal cooldown: drop the old daily-cure key, use a 4h timestamp instead.
   delete pet.lastFreeCureDay;
   if (typeof pet.lastFreeHealAt !== 'number' || !isFinite(pet.lastFreeHealAt)) pet.lastFreeHealAt = 0;
+  if (typeof pet.healCharges !== 'number' || !isFinite(pet.healCharges)) pet.healCharges = 3;
+  pet.healCharges = Math.max(0, Math.min(3, Math.floor(pet.healCharges)));
+  if (typeof pet.healRefillAt !== 'number' || !isFinite(pet.healRefillAt)) pet.healRefillAt = 0;
   // hpCurrent: default to max for old saves, always clamp to [1, max].
   const maxHp = computeStats(pet).hp;
   pet.hpCurrent = clampHp(pet.hpCurrent, maxHp);

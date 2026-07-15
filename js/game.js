@@ -48,9 +48,12 @@ const DECAY_SLEEP = { hunger: 9, hygiene: 4, happiness: 2 }; // happiness is a g
 // Passive HP healing, as a fraction of max HP per hour (sleeping heals faster).
 const HEAL_RATE_AWAKE = 0.08; // +8% / hour
 const HEAL_RATE_SLEEP = 0.32; // +32% / hour
-// Heal (🩹) is always FREE but limited to once every 4 hours. It never costs
-// coins — for an off-cooldown top-up players buy a Cure Potion in the shop.
-const HEAL_FREE_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 real hours
+// Heal (🩹) is always FREE. It now works as CHARGES: 3 charges, each restores
+// 50% of max HP, one charge refills every 4h (up to 3 stored). Never costs
+// coins — for an instant full top-up players buy a Cure Potion in the shop.
+const HEAL_FREE_COOLDOWN_MS = 4 * 60 * 60 * 1000; // per-charge refill: 1 / 4h
+const HEAL_PCT = 0.5;        // each heal restores 50% of max HP
+const HEAL_MAX_CHARGES = 3;  // up to 3 charges stored
 
 // Training config.
 const EXERCISES = {
@@ -765,13 +768,17 @@ export function doHeal() {
     toast(t('toast.fullHealth'));
     return;
   }
-  if (healCooldownRemaining(pet) > 0) {
+  refreshHealCharges(pet);
+  if ((pet.healCharges || 0) <= 0) {
     toast(t('toast.healNotReady'));
     return;
   }
-  pet.lastFreeHealAt = Date.now();
-  const healed = Math.max(0, maxHp - (pet.hpCurrent || 0));
-  pet.hpCurrent = maxHp;
+  // Consume a charge; if we were at full, start the refill timer.
+  if (pet.healCharges >= HEAL_MAX_CHARGES) pet.healRefillAt = Date.now() + HEAL_FREE_COOLDOWN_MS;
+  pet.healCharges--;
+  const before = pet.hpCurrent || 0;
+  pet.hpCurrent = Math.min(maxHp, before + maxHp * HEAL_PCT); // +50% of max HP
+  const healed = pet.hpCurrent - before;
   pet.totalHealed = (pet.totalHealed || 0) + healed; // feeds 'healed' unlock (Healing Pollen)
   reaction('🩹');
   bouncePet();
@@ -1151,16 +1158,17 @@ function refreshBars() {
   // down; re-enables (and relabels to "Heal") the moment the cooldown expires.
   const healBtn = $('btn-heal');
   if (healBtn) {
-    const rem = healCooldownRemaining(pet);
+    refreshHealCharges(pet);
     const label = healBtn.querySelector('.act-label');
-    if (rem > 0) {
+    const charges = pet.healCharges || 0;
+    if (charges <= 0) {
       healBtn.disabled = true;
       healBtn.classList.add('disabled');
-      if (label) label.textContent = t('action.healCooldown', { time: fmtDuration(rem) });
+      if (label) label.textContent = t('action.healCooldown', { time: fmtDuration(healChargeRemaining(pet)) });
     } else {
       healBtn.disabled = false;
       healBtn.classList.remove('disabled');
-      if (label) label.textContent = t('action.heal');
+      if (label) label.textContent = t('action.healCharges', { n: charges, max: HEAL_MAX_CHARGES });
     }
   }
 }
@@ -1235,10 +1243,21 @@ export function refresh() {
   // just "Heal" — no price, no countdown. The static data-i18n label handles it.
 }
 
-// Milliseconds until the next free heal (0 = free heal available now).
-function healCooldownRemaining(pet) {
-  const last = typeof pet.lastFreeHealAt === 'number' ? pet.lastFreeHealAt : 0;
-  return Math.max(0, last + HEAL_FREE_COOLDOWN_MS - Date.now());
+// Lazily refill heal charges: +1 every HEAL_FREE_COOLDOWN_MS, capped at max.
+function refreshHealCharges(pet) {
+  if (typeof pet.healCharges !== 'number') pet.healCharges = HEAL_MAX_CHARGES;
+  if (pet.healCharges >= HEAL_MAX_CHARGES) { pet.healRefillAt = 0; return; }
+  const now = Date.now();
+  while (pet.healCharges < HEAL_MAX_CHARGES && pet.healRefillAt && now >= pet.healRefillAt) {
+    pet.healCharges++;
+    pet.healRefillAt = pet.healCharges < HEAL_MAX_CHARGES ? pet.healRefillAt + HEAL_FREE_COOLDOWN_MS : 0;
+  }
+}
+// Milliseconds until the next heal charge (0 if a charge is available now).
+function healChargeRemaining(pet) {
+  refreshHealCharges(pet);
+  if ((pet.healCharges || 0) > 0) return 0;
+  return Math.max(0, (pet.healRefillAt || 0) - Date.now());
 }
 
 // Compact duration label like "3h", "2h 13m", "12m".

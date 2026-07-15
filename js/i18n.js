@@ -54,6 +54,7 @@ const en = {
   'action.sleep': 'Sleep',
   'action.wake': 'Wake',
   'action.healCooldown': 'Heal {time}',
+  'action.healCharges': 'Heal {n}/{max}',
 
   // pet screen status / hints
   'status.needsCare': '🩹 Needs care!',
@@ -382,6 +383,7 @@ const it = {
   'action.sleep': 'Dormi',
   'action.wake': 'Sveglia',
   'action.healCooldown': 'Cura {time}',
+  'action.healCharges': 'Cura {n}/{max}',
 
   'status.needsCare': '🩹 Ha bisogno di cure!',
   'status.starving': '😿 Sta morendo di fame!',
@@ -698,6 +700,7 @@ const ja = {
   'action.sleep': 'おやすみ',
   'action.wake': 'おこす',
   'action.healCooldown': 'かいふく {time}',
+  'action.healCharges': 'かいふく {n}/{max}',
 
   'status.needsCare': '🩹 おてあてが ひつよう！',
   'status.starving': '😿 おなかペコペコ！',
