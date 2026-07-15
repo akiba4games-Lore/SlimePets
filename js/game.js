@@ -1100,7 +1100,7 @@ function renderPetCustom(extra) {
   // v5 (§4/§5): dirty (hygiene<35) or starving forces a sad mood (sad mouth),
   // and dirty also shows the smudge/fly overlay.
   const dirty = pet.stage !== 'egg' && pet.state !== 'dead' && pet.care.hygiene < DIRTY_THRESHOLD;
-  const sad = pet.care.happiness < 30 || dirty || isStarving(pet);
+  const sad = pet.care.happiness < 50 || dirty || isStarving(pet);
   const mood = pet.sleeping ? 'sleepy' : sad ? 'sad' : 'idle';
   // Chubbiness: map weight 30..100 -> 0..1 so a heavier pet looks squatter.
   const chubby = clamp((pet.weight - 30) / 70, 0, 1);

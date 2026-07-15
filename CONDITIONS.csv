@@ -1,0 +1,14 @@
+difficulty,level,wins,trainings,education,scold,cuddle,game_rps,weight,stage
+EASY,3,3,5,-,3,3,3,-,child
+MEDIUM,8,15,20,>=30,10,10,30,>=40,teen
+HARD,12,25,40,>=50,20,20,60,<=20,adult
+
+special_id,condition,assigned_move
+SPECIAL_01,HP>=60,(unassigned)
+SPECIAL_02,STR>=30,fire Blaze
+SPECIAL_03,SPD>=30,lightning Thunder
+SPECIAL_04,DEF>=30,water Wave / earth Sand Attack
+SPECIAL_05,healed>=1000 HP (lifetime),grass Healing Pollen
+SPECIAL_06,CRIT>=30,dark Nightmare
+SPECIAL_07,spoiled=0 AND education>=70,light Beam
+SPECIAL_08,lost>=50 battles (lifetime),none Explosion

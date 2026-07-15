@@ -1,0 +1,27 @@
+category,attribute,values_or_range,notes
+appearance,element,none/water/fire/grass/earth/lightning/dark/light,"weights: none 20%, 5 core 14% each, dark/light 5% each; fixed for life"
+appearance,body color,derived from element,"fire=red, water=blue, grass=green, lightning=yellow, earth=brown, dark=purple, light=cream, none=random"
+appearance,bodyShape,blob / drop / square / spiky / mochi,drop = cute water droplet
+appearance,eyes,round / sparkle / sleepy / oval / star,
+appearance,mouth,smile / cat / open / w,turns sad (frown) when unhappy
+appearance,ears,none / cat / bunny / floppy / round,appears from child stage
+appearance,horn,none / single / double / antlers,appears from child stage
+appearance,nose,none / dot / triangle,appears from teen stage
+appearance,tail,none / nub / curl / fox,appears from teen stage
+appearance,pattern,none / spots / belly,appears at adult stage
+appearance,cheeks (blush),yes / no,
+innate,maxStamina,60-140,from seed
+innate,laziness,0.0-1.0,chance to refuse training
+innate,affinity,0.7-1.3 each (str/hp/spd/def/crit),stat growth multipliers
+stats,hp / str / spd / def / crit,grow with level x affinity,hp = max HP
+stages,order,egg > baby > child > teen > adult,~1d/3d/7d real time (or DEV.grow)
+care,hunger,0-100,decays; <15 risk of illness/starvation
+care,happiness,0-100,"drops if dirty/wounded/sick/wrongly scolded; sad face below 50%"
+care,hygiene,0-100,decays over time and with poop/training
+care,HP (hpCurrent),0-max,persistent between battles; 0 (starvation) = death
+care,stamina,0-maxStamina,regen ~1/30s (2x asleep); training costs 20
+lifestyle,weight,0-100 (start 30),up with fatty food, down with training
+lifestyle,education,0-100 (start 20),Scold raises it; reduces spoiling and refusals
+lifestyle,spoiled,0-100 (start 0),empty Cuddle raises it; raises food/training refusals
+economy,coins,start 400,earned only by winning battles
+counters,for move unlocks,trainingsDone / battleWins / scoldCount / cuddleCount / rpsWins / totalHealed / battleLosses,

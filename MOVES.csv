@@ -1,0 +1,34 @@
+element,move,tier,power_min,power_max,cooldown,priority,effect,unlock
+none,Attack,universal,1.0,1.0,0,0,,always
+none,Tackle,basic,1.0,1.2,0,0,,EASY
+none,Slam,mid,1.2,1.4,1,0,,MEDIUM
+none,Protect,strong,1.0,1.2,2,0,blocks the enemy hit (still deals damage),HARD
+none,Explosion,special,2.4,3.0,3,0,recoil 20% maxHP,SPECIAL_08 losses>=50
+water,Bubble,basic,1.0,1.2,0,0,,EASY
+water,Aqua Jet,mid,1.2,1.4,1,0,self DEF +10%,MEDIUM
+water,Tidal,strong,1.3,1.6,1,0,,HARD
+water,Wave,special,1.9,2.2,charge 1,0,self DEF -20%,SPECIAL_04 DEF>=30
+fire,Ember,basic,1.0,1.2,0,0,,EASY
+fire,Flame,mid,1.2,1.4,0,0,,MEDIUM
+fire,Scorch,strong,1.0,1.1,1,1,Quick (acts first),HARD
+fire,Blaze,special,1.3,1.6,1,0,self STR +10%,SPECIAL_02 STR>=30
+grass,Vine,basic,1.2,1.4,1,0,,EASY
+grass,Leaf Blade,mid,1.3,1.6,1,0,,MEDIUM
+grass,Bloom,strong,1.2,1.5,1,0,self SPD -40% + heal 10% maxHP,HARD
+grass,Healing Pollen,special,0,0,2,0,heal 25% maxHP (no damage),SPECIAL_05 healed>=1000
+earth,Pebble,basic,1.2,1.4,1,0,,EASY
+earth,Rock Toss,mid,1.3,1.6,1,0,,MEDIUM
+earth,Quake,strong,1.6,2.0,2,0,,HARD
+earth,Sand Attack,special,1.6,2.0,2,0,enemy SPD -20%,SPECIAL_04 DEF>=30
+lightning,Spark,basic,1.0,1.2,0,0,,EASY
+lightning,Zap,mid,1.2,1.4,0,0,,MEDIUM
+lightning,Bolt,strong,1.3,1.6,0,0,,HARD
+lightning,Thunder,special,1.5,1.7,2,0,enemy STR -20%,SPECIAL_03 SPD>=30
+dark,Shade,basic,1.0,1.2,0,0,,EASY
+dark,Umbra,mid,1.2,1.4,0,0,,MEDIUM
+dark,Void,strong,1.3,1.6,1,0,,HARD
+dark,Nightmare,special,1.3,1.6,2,0,enemy STR -10% + DEF -10%,SPECIAL_06 CRIT>=30
+light,Glimmer,basic,1.0,1.2,0,0,,EASY
+light,Flash,mid,1.2,1.4,0,0,,MEDIUM
+light,Radiance,strong,1.3,1.6,1,0,,HARD
+light,Beam,special,2.2,2.5,charge 2,0,,SPECIAL_07 spoiled=0 & education>=70
