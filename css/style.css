@@ -344,6 +344,63 @@ body {
 .ex-stat { font-size: 13px; font-weight: 800; color: var(--pink-d); }
 .ex-cost { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
 
+/* v5.1 — training "scene": pet trots in, works out, trots off */
+.train-stage {
+  position: relative;
+  height: 120px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 72%, #ffffff 0%, #eef4ff 72%, #e2ecff 100%);
+  box-shadow: inset 0 -6px 14px rgba(140, 160, 210, 0.25);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.train-stage.show { opacity: 1; }
+.train-stage #train-svg {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 108px;
+  height: 108px;
+  transform: translateX(-50%);
+}
+.train-emoji {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 26px;
+  opacity: 0;
+}
+.train-stage.perform #train-svg { animation: train-perform 2.6s ease-in-out; }
+.train-stage.perform .train-emoji { animation: train-emoji 2.6s ease-in-out; }
+@keyframes train-perform {
+  0%   { transform: translateX(-280%) scale(0.9); }
+  16%  { transform: translateX(-50%) scale(1); }
+  28%  { transform: translateX(-50%) translateY(-16px) scaleY(0.92) scaleX(1.06); }
+  40%  { transform: translateX(-50%) translateY(0) scaleY(1.06) scaleX(0.94); }
+  52%  { transform: translateX(-50%) translateY(-16px) scaleY(0.92) scaleX(1.06); }
+  64%  { transform: translateX(-50%) translateY(0) scaleY(1.06) scaleX(0.94); }
+  76%  { transform: translateX(-50%) translateY(-10px) scale(1.02); }
+  86%  { transform: translateX(-50%) translateY(0) scale(1); }
+  100% { transform: translateX(320%) scale(0.9); }
+}
+@keyframes train-emoji {
+  0%, 12%  { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.7); }
+  25%, 80% { opacity: 1; transform: translateX(-50%) translateY(-4px) scale(1.1); }
+  100%     { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.7); }
+}
+.train-strike {
+  text-align: center;
+  font-weight: 800;
+  font-size: 13px;
+  color: #b0304a;
+  background: #ffd6d6;
+  border-radius: 12px;
+  padding: 6px 10px;
+}
+
 /* ---------------- Menu ---------------- */
 .menu-body { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 700; color: var(--ink-soft); }

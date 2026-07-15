@@ -387,6 +387,7 @@ export function createPet(name, seed) {
     lastFoodId: null,
     state: 'alive', // 'alive' | 'dead' (death via starvation only)
     lastFedAt: now, // ms of last feed; starvation starts 2h after this
+    trainBlockUntil: 0, // v5.1: refusing to train locks ALL training for 5 min
   };
   pet.hpCurrent = computeStats(pet).hp; // born at full health
   return pet;
@@ -596,6 +597,7 @@ export function deserializePet(obj) {
   pet.lastEggAt = num(pet.lastEggAt, 0);
   pet.sameFoodStreak = Math.max(0, Math.floor(num(pet.sameFoodStreak, 0)));
   pet.lastFoodId = typeof pet.lastFoodId === 'string' ? pet.lastFoodId : null;
+  pet.trainBlockUntil = num(pet.trainBlockUntil, 0);
   if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') pet.moveOverrides = {};
   // Moves: keep only ids that still exist in this pet's learnset; always know Attack.
   const validIds = new Set(getLearnset(pet).map((a) => a.id));

@@ -104,6 +104,7 @@ const en = {
   'train.plusDef': '+DEF',
   'train.plusCrit': '+CRIT',
   'train.hint': 'Training costs stamina. A lazy slime might refuse — that\'s free, at least!',
+  'train.onStrike': '😤 On strike — {time}',
 
   // menu screen
   'menu.title': 'Menu',
@@ -201,6 +202,7 @@ const en = {
   'toast.eggFirst': 'Your egg needs to hatch first! 🥚',
   'toast.asleep': '{name} is fast asleep 💤 — tap Sleep to wake.',
   'toast.tooTired': '{name} is too tired to train 😴',
+  'toast.trainBlocked': '{name} is on strike! No training for {time}. Scold to snap it out of it.',
   'toast.trained': '{name} trained {ex}! +{amount} {stat} — all sweaty! 💦',
   'toast.reachedLevel': '{name} reached level {level}! 🎉',
   'toast.mysteriousEgg': 'A mysterious egg appeared! 🥚',
@@ -356,6 +358,7 @@ const it = {
   'train.plusDef': '+DEF',
   'train.plusCrit': '+CRIT',
   'train.hint': 'Allenarsi costa energia. Uno slime pigro potrebbe rifiutare — almeno è gratis!',
+  'train.onStrike': '😤 In sciopero — {time}',
 
   'menu.title': 'Menu',
   'menu.subtitle': 'Gestisci il tuo pet',
@@ -449,6 +452,7 @@ const it = {
   'toast.eggFirst': 'Prima l\'uovo deve schiudersi! 🥚',
   'toast.asleep': '{name} dorme profondamente 💤 — tocca Dormi per svegliarlo.',
   'toast.tooTired': '{name} è troppo stanco per allenarsi 😴',
+  'toast.trainBlocked': '{name} è in sciopero! Niente allenamento per {time}. Sgridalo per farlo smettere.',
   'toast.trained': '{name} ha fatto {ex}! +{amount} {stat} — tutto sudato! 💦',
   'toast.reachedLevel': '{name} ha raggiunto il livello {level}! 🎉',
   'toast.mysteriousEgg': 'È apparso un uovo misterioso! 🥚',
@@ -600,6 +604,7 @@ const ja = {
   'train.plusDef': '+DEF',
   'train.plusCrit': '+CRIT',
   'train.hint': 'トレーニングは スタミナを つかうよ。なまけものの スライムは ことわるかも——タダだけどね！',
+  'train.onStrike': '😤 ストライキちゅう — {time}',
 
   'menu.title': 'メニュー',
   'menu.subtitle': 'ペットの かんり',
@@ -693,6 +698,7 @@ const ja = {
   'toast.eggFirst': 'まずは タマゴを かえそう！🥚',
   'toast.asleep': '{name} は ぐっすり ねむってる 💤 — おやすみを タップして おこそう。',
   'toast.tooTired': '{name} は つかれて トレーニングできない 😴',
+  'toast.trainBlocked': '{name}は ストライキちゅう！あと {time} トレーニングできない。しかって やめさせよう。',
   'toast.trained': '{name} は {ex} を こなした！+{amount} {stat} — あせだく！💦',
   'toast.reachedLevel': '{name} は レベル {level} に なった！🎉',
   'toast.mysteriousEgg': 'ふしぎな タマゴが あらわれた！🥚',

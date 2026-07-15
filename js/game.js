@@ -102,6 +102,7 @@ const WEIGHT_TARGET = 30;
 const RPS_STAMINA = 5;
 const SELF_POTTY_EDU = 60; // education >= this enables self-potty
 const TRAIN_HYGIENE_HIT = 12; // extra hygiene lost per training session
+const TRAIN_BLOCK_MS = 5 * 60 * 1000; // v5.1: a training refusal locks ALL training this long
 
 // v4 — starvation (DESIGN §6). Neglect drains HP + weight after a grace period.
 const STARVE_GRACE_MS = 2 * 60 * 60 * 1000; // 2h since last feed before it bites
@@ -576,12 +577,14 @@ export function doScold() {
   const now = Date.now();
   const poopValid = pet.poopInRoom && !pet.poopScolded;
   const misValid = pet.lastMisbehaviorAt > 0 && now - pet.lastMisbehaviorAt <= MISBEHAVIOR_WINDOW_MS;
-  if (poopValid || misValid) {
+  const strikeValid = (pet.trainBlockUntil || 0) > now; // scolding ends a training strike
+  if (poopValid || misValid || strikeValid) {
     pet.education = clamp(pet.education + 8, 0, 100);
     pet.spoiled = clamp(pet.spoiled - 10, 0, 100);
     c.happiness = clamp(c.happiness - 3, 0, 100);
     if (poopValid) pet.poopScolded = true;
     if (misValid) pet.lastMisbehaviorAt = 0;
+    if (strikeValid) { pet.trainBlockUntil = 0; refreshTrain(); } // training available again
     reaction('📢');
     toast(t('toast.scoldLearn', { name: pet.name }));
     checkLearning(); // education may have crossed a milestone
@@ -676,17 +679,25 @@ export function doTrain(name) {
     toast(t('toast.asleep', { name: pet.name }));
     return;
   }
+  // v5.1: while on strike (after a refusal) ALL training is locked for 5 minutes.
+  if (Date.now() < (pet.trainBlockUntil || 0)) {
+    toast(t('toast.trainBlocked', { name: pet.name, time: fmtDuration(pet.trainBlockUntil - Date.now()) }));
+    return;
+  }
   if (pet.stamina < ex.stam) {
     toast(t('toast.tooTired', { name: pet.name }));
     return;
   }
-  // Refusal (free): laziness + spoiled, tempered by education.
+  // Refusal (free): laziness + spoiled, tempered by education. A refusal puts the
+  // pet ON STRIKE — ALL training locks for 5 min (clear early by scolding).
   const refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
   if (Math.random() < refuseChance) {
     pet.lastMisbehaviorAt = Date.now();
+    pet.trainBlockUntil = Date.now() + TRAIN_BLOCK_MS;
     const idx = Math.floor(Math.random() * LAZY_LINE_COUNT);
     toast(t('lazy.' + idx, { name: pet.name }));
     reaction('💢');
+    refreshTrain();
     save();
     return;
   }
@@ -706,6 +717,7 @@ export function doTrain(name) {
   markAchievement(); // a completed session counts as an achievement
   reaction(ex.emoji);
   bouncePet();
+  playTrainingAnim(name); // pet trots on, works out, trots off (v5.1)
   const shown = Math.max(1, Math.round(gain * 10) / 10);
   toast(t('toast.trained', { name: pet.name, ex: t('train.' + name.toLowerCase()), amount: shown, stat: ex.label }));
   if (leveled > 0) setTimeout(() => toast(t('toast.reachedLevel', { name: pet.name, level: pet.level })), 700);
@@ -1046,12 +1058,42 @@ function refreshTrain() {
   if (st) st.textContent = t('train.staminaValue', { cur: Math.floor(pet.stamina), max: pet.genome.maxStamina });
   const stFill = $('train-stamina-fill');
   if (stFill) stFill.style.width = (pet.stamina / pet.genome.maxStamina) * 100 + '%';
-  // disable exercises the pet can't afford
+  const blocked = Date.now() < (pet.trainBlockUntil || 0);
+  // v5.1: "on strike" badge with a live countdown
+  const badge = $('train-strike');
+  if (badge) {
+    if (blocked) {
+      badge.style.display = '';
+      badge.textContent = t('train.onStrike', { time: fmtDuration(pet.trainBlockUntil - Date.now()) });
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+  // disable exercises the pet can't afford OR while on strike
   document.querySelectorAll('.exercise').forEach((btn) => {
     const ex = EXERCISES[btn.dataset.ex];
     if (!ex) return;
-    btn.classList.toggle('disabled', pet.stamina < ex.stam || pet.stage === 'egg');
+    btn.classList.toggle('disabled', blocked || pet.stamina < ex.stam || pet.stage === 'egg');
   });
+}
+
+// v5.1: on a successful session, the pet trots onto the training stage, does a
+// few workout reps, then trots off. Purely cosmetic (CSS-driven).
+let trainAnimTimer = 0;
+function playTrainingAnim(name) {
+  const stage = $('train-stage');
+  const svg = $('train-svg');
+  const pet = state.pet;
+  if (!stage || !svg || !pet) return;
+  renderPet(svg, pet.genome, pet.stage, { animate: true, element: pet.genome.element });
+  const emo = $('train-emoji');
+  const ex = EXERCISES[name];
+  if (emo) emo.textContent = ex ? ex.emoji : '💪';
+  stage.classList.remove('perform');
+  void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
+  stage.classList.add('show', 'perform');
+  clearTimeout(trainAnimTimer);
+  trainAnimTimer = setTimeout(() => stage.classList.remove('perform', 'show'), 2600);
 }
 
 // ---------------------------------------------------------------------------
