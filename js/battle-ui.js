@@ -275,8 +275,7 @@ function applyBattleRewardsAndCost(won, info) {
     console.error('[battle-ui] grantBattleXp failed', err);
   }
   try {
-    // Battle costs 25 stamina + some hunger (v2: no energy stat).
-    if (typeof pet.stamina === 'number') pet.stamina = Math.max(0, pet.stamina - 25);
+    // Battles no longer cost stamina — only a little hunger.
     if (pet.care && typeof pet.care.hunger === 'number') {
       pet.care.hunger = Math.max(0, pet.care.hunger - 8);
     }

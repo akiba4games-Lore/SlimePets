@@ -1088,6 +1088,9 @@ export function newEgg(name, seed) {
 export function resetGame() {
   clearGame();
   newEgg('Slime', randomSeed());
+  // A full reset must not leave the new egg locked behind the 4h cooldown.
+  if (state.pet) state.pet.lastEggAt = 0;
+  save();
 }
 
 export function save() {
@@ -1097,17 +1100,15 @@ export function save() {
 // ---------------------------------------------------------------------------
 // Battle glue for Agent B (window.SlimeGame)
 // ---------------------------------------------------------------------------
-const BATTLE_STAMINA_COST = 25;
-
 function canBattle() {
-  return !!(state.pet && state.pet.stage !== 'egg' && state.pet.state !== 'dead' &&
-    state.pet.stamina >= BATTLE_STAMINA_COST);
+  // Battles no longer cost stamina, so they're never blocked by low stamina.
+  return !!(state.pet && state.pet.stage !== 'egg' && state.pet.state !== 'dead');
 }
 
 function payBattleCost() {
   const pet = state.pet;
   if (!pet) return;
-  pet.stamina = clamp(pet.stamina - BATTLE_STAMINA_COST, 0, pet.genome.maxStamina);
+  // Battles do NOT use stamina anymore; they still make the pet a little hungry.
   pet.care.hunger = clamp(pet.care.hunger - 8, 0, 100);
   save();
 }
