@@ -29,6 +29,9 @@
         <p id="death-text" class="death-text">has passed away… tap to send it to the sky 🕊️</p>
       </div>
       <div id="night-overlay" class="night-overlay" aria-hidden="true">🌙</div>
+      <!-- RPS minigame overlays (countdown + pet's revealed icon, upside-down) -->
+      <div id="rps-countdown" class="rps-countdown" style="display:none" aria-hidden="true"></div>
+      <div id="rps-pet-icon" class="rps-pet-icon" style="display:none" aria-hidden="true"></div>
     </div>
 
     <div id="care-ui" class="care-ui">
@@ -155,8 +158,9 @@
       <div class="menu-io">
         <button id="btn-export-pet" class="big-btn" data-i18n="menu.exportPet">📤 Copy Pet</button>
         <textarea id="export-code" class="io-code" readonly rows="2" style="display:none"></textarea>
-        <input id="import-code" class="io-input" type="text" data-i18n-ph="menu.importPh" placeholder="Paste pet code" />
         <button id="btn-import-pet" class="big-btn" data-i18n="menu.importPet">📥 Load Pet</button>
+        <input id="import-code" class="io-input" type="text" data-i18n-ph="menu.importPh" placeholder="Paste pet code" style="display:none" />
+        <button id="btn-import-load" class="big-btn accent" data-i18n="menu.importLoad" style="display:none">Load</button>
       </div>
 
       <button id="btn-notify" class="big-btn" data-i18n="notif.enable">🔔 Enable notifications</button>
@@ -232,22 +236,16 @@
     </div>
   </div>
 
-  <!-- ===================== PLAY (Rock-Paper-Scissors) ===================== -->
-  <div id="rps-sheet" class="sheet-overlay">
-    <div class="sheet">
-      <div class="sheet-head"><span data-i18n="rps.title">✊✋✌️ Rock Paper Scissors</span><button id="rps-close" class="info-close" aria-label="close">✕</button></div>
-      <div class="rps-arena">
-        <div class="rps-side"><small data-i18n="rps.you">You</small><div id="rps-you" class="rps-hand">❔</div></div>
-        <div class="rps-vs" data-i18n="rps.vs">VS</div>
-        <div class="rps-side"><small id="rps-petname">Pet</small><div id="rps-pet" class="rps-hand">❔</div></div>
-      </div>
-      <p id="rps-result" class="rps-result" data-i18n="rps.pick">Pick your move!</p>
-      <div class="rps-buttons">
-        <button class="rps-btn" data-rps="rock">✊</button>
-        <button class="rps-btn" data-rps="paper">✋</button>
-        <button class="rps-btn" data-rps="scissors">✌️</button>
-      </div>
+  <!-- ===================== PLAY (Rock-Paper-Scissors) — low bottom panel ===== -->
+  <div id="rps-panel" class="rps-panel" aria-hidden="true">
+    <button id="rps-close" class="rps-panel-close" aria-label="close">✕</button>
+    <div id="rps-you-icon" class="rps-you-icon" style="display:none" aria-hidden="true"></div>
+    <div id="rps-choices" class="rps-choices">
+      <button class="rps-btn" data-rps="rock">✊</button>
+      <button class="rps-btn" data-rps="paper">✋</button>
+      <button class="rps-btn" data-rps="scissors">✌️</button>
     </div>
+    <p id="rps-result" class="rps-result" style="display:none"></p>
   </div>
 
   <!-- ===================== LANGUAGE CHOOSER ===================== -->

@@ -43,6 +43,11 @@ const state = {
 let saveThrottle = 0;
 const OFFLINE_CAP_MS = 12 * 60 * 60 * 1000; // 12h
 
+// Transient pose flag: a scold makes the pet sulk (sad face) until the NEXT
+// care/action runs. renderPetCustom forces mood='sad' while it's set; any other
+// action clears it (see afterAction + the explicit clears in sleep/train/play).
+let scoldSadPose = false;
+
 // Care decay rates per hour (v2: no more energy stat).
 const DECAY_AWAKE = { hunger: 18, happiness: 10, hygiene: 7 };
 const DECAY_SLEEP = { hunger: 9, hygiene: 4, happiness: 2 }; // happiness is a gain here
@@ -369,6 +374,7 @@ function handleSendOff() {
 // ---------------------------------------------------------------------------
 export function showScreen(name) {
   state.screen = name;
+  closeRps(); // never leave the RPS panel lingering over another screen
   document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
   const el = $('screen-' + name);
   if (el) el.classList.add('active');
@@ -748,6 +754,8 @@ export function doScold() {
   const pet = state.pet;
   const c = pet.care;
   const now = Date.now();
+  // Scolding makes the pet sulk with a sad face until the next action clears it.
+  scoldSadPose = true;
   const poopValid = pet.poopInRoom && !pet.poopScolded;
   const misValid = pet.lastMisbehaviorAt > 0 && now - pet.lastMisbehaviorAt <= MISBEHAVIOR_WINDOW_MS;
   const strikeValid = (pet.trainBlockUntil || 0) > now; // scolding ends a training strike
@@ -785,6 +793,7 @@ export function doClean() {
 
 export function doSleep() {
   if (!requirePet()) return;
+  scoldSadPose = false; // sleeping is an action — clear the scold sulk
   state.pet.sleeping = !state.pet.sleeping;
   reaction(state.pet.sleeping ? '💤' : '☀️');
   toast(state.pet.sleeping
@@ -809,6 +818,7 @@ export function doPlay() {
   if (pet.playCharges >= PLAY_MAX_CHARGES) pet.playRefillAt = Date.now() + PLAY_REFILL_MS;
   pet.playCharges--;
   if (pet.sleeping) pet.sleeping = false;
+  scoldSadPose = false; // playing is an action — clear the scold sulk
   // v6: playing no longer costs or requires stamina (still otherwise free).
   save();
   refresh();
@@ -863,6 +873,9 @@ export function doHeal() {
 }
 
 function afterAction(mood) {
+  // Any action other than a scold clears the transient scold sad-pose so the
+  // pet re-renders with its normal mood.
+  if (mood !== 'scold') scoldSadPose = false;
   refresh();
   save();
 }
@@ -908,6 +921,8 @@ export function doTrain(name) {
     toast(t('toast.tooTired', { name: pet.name }));
     return;
   }
+  // Training (success or refusal) is an action — clear the scold sulk.
+  scoldSadPose = false;
   // Refusal (free): laziness + spoiled, tempered by education. A refusal puts the
   // pet ON STRIKE — ALL training locks for 5 min (clear early by scolding).
   const refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
@@ -1028,36 +1043,108 @@ function closeConfirm() {
 const RPS_EMOJI = { rock: '✊', paper: '✋', scissors: '✌️' };
 const RPS_BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 
+// v13 — RPS is a LOW bottom panel (#rps-panel), not a full sheet. Flow:
+//   openRps -> show the 3 choice buttons
+//   playRps -> hide buttons, run a 3-2-1 countdown over the pet area
+//   revealRps -> pet icon below the pet (upside-down, bigger) + player icon
+//                above the panel, then the result, then auto-close.
+let rpsBusy = false;              // ignore choice taps mid-countdown/reveal
+const rpsTimers = [];             // pending timeouts (cleared on close)
+const RPS_COUNT_MS = 450;         // ~0.45s per number (~1.35s total for 3-2-1)
+const RPS_REVEAL_HOLD_MS = 1800;  // how long the reveal lingers before auto-close
+
+function clearRpsTimers() {
+  while (rpsTimers.length) clearTimeout(rpsTimers.pop());
+}
+
+// Reset the transient reveal bits (countdown + both icons + result text).
+function resetRpsReveal() {
+  const cd = $('rps-countdown');
+  if (cd) { cd.style.display = 'none'; cd.textContent = ''; cd.classList.remove('tick'); }
+  const petIcon = $('rps-pet-icon');
+  if (petIcon) { petIcon.style.display = 'none'; petIcon.textContent = ''; petIcon.classList.remove('show'); }
+  const youIcon = $('rps-you-icon');
+  if (youIcon) { youIcon.style.display = 'none'; youIcon.textContent = ''; youIcon.classList.remove('show'); }
+  const result = $('rps-result');
+  if (result) { result.style.display = 'none'; result.textContent = ''; }
+}
+
 function openRps() {
-  const pet = state.pet;
-  const nameEl = $('rps-petname');
-  if (nameEl) nameEl.textContent = pet ? pet.name : 'Pet';
-  setText('rps-you', '❔');
-  setText('rps-pet', '❔');
-  setText('rps-result', t('rps.pick'));
-  openSheet('rps-sheet');
+  clearRpsTimers();
+  rpsBusy = false;
+  resetRpsReveal();
+  const choices = $('rps-choices');
+  if (choices) choices.style.display = '';
+  const panel = $('rps-panel');
+  if (panel) panel.classList.add('open');
+}
+
+function closeRps() {
+  clearRpsTimers();
+  rpsBusy = false;
+  const panel = $('rps-panel');
+  if (panel) panel.classList.remove('open');
+  resetRpsReveal();
+}
+
+// 3 -> 2 -> 1 countdown over the pet area, then `done()`.
+function runRpsCountdown(done) {
+  const cd = $('rps-countdown');
+  let n = 3;
+  const step = () => {
+    if (n <= 0) {
+      if (cd) { cd.style.display = 'none'; cd.classList.remove('tick'); }
+      done();
+      return;
+    }
+    if (cd) {
+      cd.style.display = '';
+      cd.textContent = String(n);
+      cd.classList.remove('tick');
+      void cd.offsetWidth; // restart the pop animation each number
+      cd.classList.add('tick');
+    }
+    n--;
+    rpsTimers.push(setTimeout(step, RPS_COUNT_MS));
+  };
+  step();
 }
 
 export function playRps(choice) {
   if (!requirePet()) return;
   const pet = state.pet;
   if (!RPS_EMOJI[choice]) return;
+  if (rpsBusy) return; // a round is already in flight
+  rpsBusy = true;
+  const choices = $('rps-choices');
+  if (choices) choices.style.display = 'none';
   // v6: playing no longer costs or requires stamina.
   const opts = ['rock', 'paper', 'scissors'];
   const petChoice = opts[Math.floor(Math.random() * opts.length)];
-  const youEl = $('rps-you');
-  const petEl = $('rps-pet');
-  if (youEl) {
-    youEl.textContent = RPS_EMOJI[choice];
-    youEl.classList.remove('reveal');
-    void youEl.offsetWidth;
-    youEl.classList.add('reveal');
+  runRpsCountdown(() => revealRps(choice, petChoice));
+}
+
+// Show both icons + result, apply the happiness effect, then auto-close.
+function revealRps(choice, petChoice) {
+  const pet = state.pet;
+  if (!pet) { closeRps(); return; }
+  // Pet's icon below the pet SVG, rotated 180°, ~110% size.
+  const petIcon = $('rps-pet-icon');
+  if (petIcon) {
+    petIcon.textContent = RPS_EMOJI[petChoice];
+    petIcon.style.display = '';
+    petIcon.classList.remove('show');
+    void petIcon.offsetWidth;
+    petIcon.classList.add('show');
   }
-  if (petEl) {
-    petEl.textContent = RPS_EMOJI[petChoice];
-    petEl.classList.remove('reveal');
-    void petEl.offsetWidth;
-    petEl.classList.add('reveal');
+  // Player's icon just above the choice panel, ~110% size.
+  const youIcon = $('rps-you-icon');
+  if (youIcon) {
+    youIcon.textContent = RPS_EMOJI[choice];
+    youIcon.style.display = '';
+    youIcon.classList.remove('show');
+    void youIcon.offsetWidth;
+    youIcon.classList.add('show');
   }
   const c = pet.care;
   let msg;
@@ -1074,9 +1161,11 @@ export function playRps(choice) {
     c.happiness = clamp(c.happiness + 4, 0, 100);
     msg = t('rps.lose', { name: pet.name });
   }
-  setText('rps-result', msg);
+  const result = $('rps-result');
+  if (result) { result.textContent = msg; result.style.display = ''; }
   refresh();
   save();
+  rpsTimers.push(setTimeout(closeRps, RPS_REVEAL_HOLD_MS));
 }
 
 // ---------------------------------------------------------------------------
@@ -1179,7 +1268,9 @@ function renderPetCustom(extra) {
   // On strike (after refusing to train) the pet sulks — show it ANGRY.
   const onStrike = pet.stage !== 'egg' && pet.state !== 'dead' && Date.now() < (pet.trainBlockUntil || 0);
   const sad = pet.care.happiness < 50 || dirty || isStarving(pet);
-  const mood = pet.sleeping ? 'sleepy' : onStrike ? 'angry' : sad ? 'sad' : 'idle';
+  let mood = pet.sleeping ? 'sleepy' : onStrike ? 'angry' : sad ? 'sad' : 'idle';
+  // A fresh scold forces the sad face until the next action clears the flag.
+  if (scoldSadPose && pet.stage !== 'egg' && pet.state !== 'dead') mood = 'sad';
   // Chubbiness: map weight 30..100 -> 0..1 so a heavier pet looks squatter.
   const chubby = clamp((pet.weight - 30) / 70, 0, 1);
   const opts = {
@@ -1747,6 +1838,23 @@ function doExportPet() {
   }
 }
 
+// Tapping "📥 Load Pet" reveals the paste input + a Load button (hidden by
+// default), then focuses the input. The actual load runs from the Load button.
+function revealImportPet() {
+  const input = $('import-code');
+  const loadBtn = $('btn-import-load');
+  if (input) { input.style.display = ''; input.focus(); }
+  if (loadBtn) loadBtn.style.display = '';
+}
+
+// Hide the import paste field + Load button and clear the pasted text.
+function hideImportPet() {
+  const input = $('import-code');
+  const loadBtn = $('btn-import-load');
+  if (input) { input.style.display = 'none'; input.value = ''; }
+  if (loadBtn) loadBtn.style.display = 'none';
+}
+
 function doImportPet() {
   const input = $('import-code');
   const raw = input ? input.value.trim() : '';
@@ -1761,7 +1869,7 @@ function doImportPet() {
     onConfirm: () => {
       state.pet = imported;
       save();
-      if (input) input.value = '';
+      hideImportPet();
       const field = $('export-code');
       if (field) { field.style.display = 'none'; field.value = ''; }
       showScreen('pet');
@@ -1991,9 +2099,8 @@ export function initGame() {
 
   // sheet close buttons + tap-on-backdrop to dismiss
   bindClick('food-close', () => closeSheet('food-sheet'));
-  bindClick('rps-close', () => closeSheet('rps-sheet'));
+  bindClick('rps-close', closeRps);
   bindSheetBackdrop('food-sheet');
-  bindSheetBackdrop('rps-sheet');
 
   // RPS move buttons
   document.querySelectorAll('.rps-btn').forEach((btn) => {
@@ -2013,11 +2120,9 @@ export function initGame() {
     btn.addEventListener('click', () => doTrain(btn.dataset.ex));
   });
 
-  // v12: tapping the training-animation backdrop dismisses it early (cosmetic).
-  const trainOverlay = $('train-anim-overlay');
-  if (trainOverlay) trainOverlay.addEventListener('click', (e) => {
-    if (e.target === trainOverlay) hideTrainOverlay();
-  });
+  // v13: the training-animation overlay is NON-skippable — no backdrop-tap
+  // dismiss. It swallows taps (the backdrop captures them) and auto-closes when
+  // its full animation finishes (~2.6s workout / ~2.2s refusal).
 
   // v11 — Moves management screen is now opened from the BATTLE menu (battle-ui).
   // Its Back button returns to the battle menu (falls back to the pet screen).
@@ -2064,9 +2169,11 @@ export function initGame() {
   bindClick('btn-changelog', () => showScreen('changelog'));
   bindClick('btn-changelog-back', () => showScreen('menu'));
 
-  // v12: pet export / import.
+  // v12/v13: pet export / import. Export reveals + copies the code; the import
+  // button only REVEALS the paste field + Load button (the Load button imports).
   bindClick('btn-export-pet', doExportPet);
-  bindClick('btn-import-pet', doImportPet);
+  bindClick('btn-import-pet', revealImportPet);
+  bindClick('btn-import-load', doImportPet);
 
   // populate menu name field
   const nameInput = $('menu-name');
