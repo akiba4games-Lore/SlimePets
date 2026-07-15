@@ -1,0 +1,194 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#ffd9ec" />
+<title>SlimePets</title>
+<link rel="stylesheet" href="css/style.css" />
+
+<div id="app">
+  <!-- ===================== PET SCREEN ===================== -->
+  <section id="screen-pet" class="screen active">
+    <header class="topbar">
+      <div class="title">
+        <span id="pet-name" class="pet-name">Slime</span>
+        <span id="pet-stage-label" class="pet-sub">Egg</span>
+      </div>
+      <span id="pet-coins" class="coins">🪙 0</span>
+    </header>
+
+    <div id="pet-stage" class="pet-stage">
+      <div id="pet-status" class="pet-status" data-i18n="status.needsCare" style="display:none">🩹 Needs care!</div>
+      <div id="starve-badge" class="starve-badge" data-i18n="status.starving" style="display:none">😿 Starving!</div>
+      <button id="btn-info" class="info-btn" aria-label="pet info">ℹ️</button>
+      <div id="poop-need" class="poop-need" style="display:none">💩 <span id="poop-timer">90</span>s</div>
+      <svg id="pet-svg" viewBox="0 0 200 200" aria-label="your slime pet"></svg>
+      <div id="poop-mess" class="poop-mess" style="display:none">💩</div>
+      <p id="egg-hint" class="egg-hint" data-i18n="pet.eggHint">Tap the egg to help it hatch!</p>
+      <div id="death-overlay" class="death-overlay" style="display:none">
+        <p id="death-text" class="death-text">has passed away… tap to send it to the sky 🕊️</p>
+      </div>
+    </div>
+
+    <div id="care-ui" class="care-ui">
+      <div class="bars">
+        <div class="bar-row" data-i18n-title="bar.hp"><span class="bar-ico">❤️</span><div class="bar"><div id="bar-hp" class="bar-fill hp"></div></div></div>
+        <div class="bar-row" data-i18n-title="bar.hunger"><span class="bar-ico">🍔</span><div class="bar"><div id="bar-hunger" class="bar-fill hunger"></div></div></div>
+        <div class="bar-row" data-i18n-title="bar.happiness"><span class="bar-ico">😄</span><div class="bar"><div id="bar-happiness" class="bar-fill happiness"></div></div></div>
+        <div class="bar-row" data-i18n-title="bar.hygiene"><span class="bar-ico">🧼</span><div class="bar"><div id="bar-hygiene" class="bar-fill hygiene"></div></div></div>
+        <div class="bar-row" data-i18n-title="bar.stamina"><span class="bar-ico">⚡</span><div class="bar"><div id="bar-stamina" class="bar-fill stamina"></div></div></div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-feed" class="action"><span class="act-ico">🍎</span><span class="act-label" data-i18n="action.feed">Feed</span></button>
+        <button id="btn-clean" class="action"><span class="act-ico">🫧</span><span class="act-label" data-i18n="action.clean">Clean</span></button>
+        <button id="btn-heal" class="action"><span class="act-ico">🩹</span><span class="act-label" data-i18n="action.heal">Heal</span></button>
+        <button id="btn-play" class="action"><span class="act-ico">🎈</span><span class="act-label" data-i18n="action.play">Play</span></button>
+        <button id="btn-potty" class="action"><span class="act-ico">🚽</span><span class="act-label" data-i18n="action.potty">Potty</span></button>
+        <button id="btn-cuddle" class="action"><span class="act-ico">🤗</span><span class="act-label" data-i18n="action.cuddle">Cuddle</span></button>
+        <button id="btn-scold" class="action"><span class="act-ico">😠</span><span class="act-label" data-i18n="action.scold">Scold</span></button>
+        <button id="btn-sleep" class="action"><span class="act-ico">💤</span><span class="act-label" data-i18n="action.sleep">Sleep</span></button>
+      </div>
+    </div>
+
+    <!-- ===== Info panel (slide-in overlay) ===== -->
+    <div id="info-panel" class="info-panel">
+      <div class="info-head">
+        <span class="info-title">📋 <span id="info-name">Slime</span></span>
+        <button id="btn-info-close" class="info-close" aria-label="close">✕</button>
+      </div>
+      <div class="info-scroll">
+        <div class="info-lvl">
+          <span id="info-stage">Lv 1</span>
+          <div class="xp-bar"><div id="info-xp" class="xp-fill"></div></div>
+          <span id="info-xp-label" class="mini-label">0 / 50 XP</span>
+        </div>
+
+        <h4 class="info-h" data-i18n="info.element">Element</h4>
+        <div id="info-element" class="element-line">⚪ Normal</div>
+
+        <h4 class="info-h" data-i18n="info.moves">Moves</h4>
+        <div id="info-moves" class="moves-list"></div>
+
+        <h4 class="info-h" data-i18n="info.battleStats">Battle stats</h4>
+        <div class="stats">
+          <div class="chip" data-i18n-title="stat.str.full"><span>STR</span><b id="stat-str">0</b></div>
+          <div class="chip" data-i18n-title="stat.hp.full"><span>HP</span><b id="stat-hp">0</b></div>
+          <div class="chip" data-i18n-title="stat.spd.full"><span>SPD</span><b id="stat-spd">0</b></div>
+          <div class="chip" data-i18n-title="stat.def.full"><span>DEF</span><b id="stat-def">0</b></div>
+          <div class="chip" data-i18n-title="stat.crit.full"><span>CRIT</span><b id="stat-crit">0</b></div>
+        </div>
+
+        <h4 class="info-h" data-i18n="info.lifestyle">Lifestyle</h4>
+        <div class="life-row"><span class="life-ico">⚖️</span><span class="life-lbl" data-i18n="life.weight">Weight</span><div class="bar"><div id="life-weight" class="bar-fill weight"></div></div><b id="life-weight-v">30</b></div>
+        <div class="life-row"><span class="life-ico">🎓</span><span class="life-lbl" data-i18n="life.education">Education</span><div class="bar"><div id="life-edu" class="bar-fill edu"></div></div><b id="life-edu-v">20</b></div>
+        <div class="life-row"><span class="life-ico">😤</span><span class="life-lbl" data-i18n="life.spoiled">Spoiled</span><div class="bar"><div id="life-spoiled" class="bar-fill spoiled"></div></div><b id="life-spoiled-v">0</b></div>
+
+        <h4 class="info-h" data-i18n="info.speciesTraits">Species traits</h4>
+        <div class="traits">
+          <div class="chip"><span data-i18n="trait.maxStamina">MAX ⚡</span><b id="trait-stamina">0</b></div>
+          <div class="chip"><span data-i18n="trait.laziness">LAZINESS</span><b id="trait-lazy">0</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TRAIN SCREEN ===================== -->
+  <section id="screen-train" class="screen">
+    <header class="topbar"><div class="title"><span class="pet-name" data-i18n="train.title">Training</span><span class="pet-sub" data-i18n="train.subtitle">Build up those stats!</span></div></header>
+    <div class="train-body">
+      <div class="stamina-row big">
+        <span id="train-stamina" class="mini-label" data-i18n="train.stamina">Stamina</span>
+      </div>
+      <div class="bar slim"><div id="train-stamina-fill" class="bar-fill stamina"></div></div>
+
+      <div class="exercises">
+        <button class="exercise" data-ex="Lift"><span class="ex-ico">🏋️</span><span class="ex-name" data-i18n="train.lift">Lift</span><span class="ex-stat" data-i18n="train.plusStr">+STR</span><span class="ex-cost">22⚡</span></button>
+        <button class="exercise" data-ex="Run"><span class="ex-ico">🏃</span><span class="ex-name" data-i18n="train.run">Run</span><span class="ex-stat" data-i18n="train.plusSpd">+SPD</span><span class="ex-cost">18⚡</span></button>
+        <button class="exercise" data-ex="Swim"><span class="ex-ico">🏊</span><span class="ex-name" data-i18n="train.swim">Swim</span><span class="ex-stat" data-i18n="train.plusHp">+HP</span><span class="ex-cost">24⚡</span></button>
+        <button class="exercise" data-ex="Block"><span class="ex-ico">🛡️</span><span class="ex-name" data-i18n="train.block">Block</span><span class="ex-stat" data-i18n="train.plusDef">+DEF</span><span class="ex-cost">16⚡</span></button>
+        <button class="exercise" data-ex="Focus"><span class="ex-ico">🎯</span><span class="ex-name" data-i18n="train.focus">Focus</span><span class="ex-stat" data-i18n="train.plusCrit">+CRIT</span><span class="ex-cost">20⚡</span></button>
+      </div>
+      <p class="hint" data-i18n="train.hint">Training costs stamina. A lazy slime might refuse — that's free, at least!</p>
+    </div>
+  </section>
+
+  <!-- ===================== BATTLE SCREEN (Agent B) ===================== -->
+  <div id="screen-battle" class="screen"></div>
+
+  <!-- ===================== LINK SCREEN (Agent B) ===================== -->
+  <div id="screen-link" class="screen"></div>
+
+  <!-- ===================== MENU SCREEN ===================== -->
+  <section id="screen-menu" class="screen">
+    <header class="topbar"><div class="title"><span class="pet-name" data-i18n="menu.title">Menu</span><span class="pet-sub" data-i18n="menu.subtitle">Manage your pet</span></div></header>
+    <div class="menu-body">
+      <label class="field">
+        <span data-i18n="menu.petName">Pet name</span>
+        <input id="menu-name" type="text" maxlength="14" placeholder="Slime" />
+      </label>
+      <button id="btn-rename" class="big-btn" data-i18n="menu.rename">Rename Pet</button>
+      <button id="btn-new-egg" class="big-btn accent" data-i18n="menu.newEgg">Hatch a New Egg 🥚</button>
+      <button id="btn-reset" class="big-btn danger" data-i18n="menu.reset">Reset Everything</button>
+      <p class="hint" data-i18n="menu.hint">A new egg is procedurally generated from a random seed — every slime is unique!</p>
+
+      <div class="lang-select">
+        <span class="field-label" data-i18n="menu.language">Language</span>
+        <div class="lang-buttons">
+          <button class="lang-btn" data-lang="it">🇮🇹 Italiano</button>
+          <button class="lang-btn" data-lang="ja">🇯🇵 日本語</button>
+          <button class="lang-btn" data-lang="en">🇬🇧 English</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TAB BAR ===================== -->
+  <nav class="tabbar">
+    <button class="tab active" data-screen="pet"><span>🐾</span><small data-i18n="nav.pet">Pet</small></button>
+    <button class="tab" data-screen="train"><span>💪</span><small data-i18n="nav.train">Train</small></button>
+    <button class="tab" data-screen="battle"><span>⚔️</span><small data-i18n="nav.battle">Battle</small></button>
+    <button class="tab" data-screen="menu"><span>☰</span><small data-i18n="nav.menu">Menu</small></button>
+  </nav>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- ===================== FOOD PICKER ===================== -->
+  <div id="food-sheet" class="sheet-overlay">
+    <div class="sheet">
+      <div class="sheet-head"><span data-i18n="food.title">🍽️ What's for dinner?</span><button id="food-close" class="info-close" aria-label="close">✕</button></div>
+      <div id="food-grid" class="food-grid"></div>
+    </div>
+  </div>
+
+  <!-- ===================== PLAY (Rock-Paper-Scissors) ===================== -->
+  <div id="rps-sheet" class="sheet-overlay">
+    <div class="sheet">
+      <div class="sheet-head"><span data-i18n="rps.title">✊✋✌️ Rock Paper Scissors</span><button id="rps-close" class="info-close" aria-label="close">✕</button></div>
+      <div class="rps-arena">
+        <div class="rps-side"><small data-i18n="rps.you">You</small><div id="rps-you" class="rps-hand">❔</div></div>
+        <div class="rps-vs" data-i18n="rps.vs">VS</div>
+        <div class="rps-side"><small id="rps-petname">Pet</small><div id="rps-pet" class="rps-hand">❔</div></div>
+      </div>
+      <p id="rps-result" class="rps-result" data-i18n="rps.pick">Pick your move!</p>
+      <div class="rps-buttons">
+        <button class="rps-btn" data-rps="rock">✊</button>
+        <button class="rps-btn" data-rps="paper">✋</button>
+        <button class="rps-btn" data-rps="scissors">✌️</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CDN LIBS ===================== -->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+<!-- ===================== GAME MODULES ===================== -->
+<!-- Agent B's modules (battle/net). They self-register (e.g. window.SlimeBattle). -->
+<script type="module" src="js/battle.js"></script>
+<script type="module" src="js/battle-ai.js"></script>
+<script type="module" src="js/net.js"></script>
+<script type="module" src="js/battle-ui.js"></script>
+
+<!-- Agent A's modules. main.js boots the game. -->
+<script type="module" src="js/main.js"></script>

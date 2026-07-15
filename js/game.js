@@ -1,0 +1,1341 @@
+// js/game.js — care + training logic, screen wiring, glue for Agent B.
+import {
+  createPet,
+  computeStats,
+  battleSnapshot,
+  grantBattleXp,
+  grantXp,
+  addTraining,
+  advanceStage,
+  xpForNext,
+  randomSeed,
+  getLearnset,
+  checkUnlocks,
+  rebirth,
+  ELEMENTS,
+  STAGE_DURATION_MS,
+  EGG_HATCH_MS,
+  EGG_HATCH_TAPS,
+} from './pet.js';
+import { renderPet } from './render.js';
+import { saveGame, loadGame, clearGame } from './storage.js';
+import { t, getLang, setLang, onLangChange, applyStaticI18n } from './i18n.js';
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const state = {
+  pet: null,
+  settings: {},
+  screen: 'pet',
+};
+
+let saveThrottle = 0;
+const OFFLINE_CAP_MS = 12 * 60 * 60 * 1000; // 12h
+
+// Care decay rates per hour (v2: no more energy stat).
+const DECAY_AWAKE = { hunger: 18, happiness: 10, hygiene: 7 };
+const DECAY_SLEEP = { hunger: 9, hygiene: 4, happiness: 2 }; // happiness is a gain here
+
+// Passive HP healing, as a fraction of max HP per hour (sleeping heals faster).
+const HEAL_RATE_AWAKE = 0.08; // +8% / hour
+const HEAL_RATE_SLEEP = 0.32; // +32% / hour
+// Heal action cost while on cooldown; a free heal is available every 4 hours.
+const HEAL_COST = 25;
+const HEAL_FREE_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 real hours
+
+// Training config.
+const EXERCISES = {
+  Lift: { stat: 'str', label: 'STR', stam: 22, hunger: 7, hygiene: 8, base: 2.4, emoji: '🏋️' },
+  Run: { stat: 'spd', label: 'SPD', stam: 18, hunger: 6, hygiene: 6, base: 2.4, emoji: '🏃' },
+  Swim: { stat: 'hp', label: 'HP', stam: 24, hunger: 8, hygiene: 4, base: 1.6, emoji: '🏊' },
+  Block: { stat: 'def', label: 'DEF', stam: 16, hunger: 5, hygiene: 5, base: 2.2, emoji: '🛡️' },
+  Focus: { stat: 'crit', label: 'CRIT', stam: 20, hunger: 4, hygiene: 3, base: 2.0, emoji: '🎯' },
+};
+
+// Training-refusal flavor lines live in i18n as lazy.0 … lazy.(N-1).
+const LAZY_LINE_COUNT = 6;
+
+// v3 — Food picker. Effects: hunger restore / weight delta / happiness delta.
+// Display names are localized via t('food.<key>'); `key` is the i18n suffix.
+const FOODS = {
+  milk: { emoji: '🍼', hunger: 30, weight: 0, happy: 2, sweet: false },
+  apple: { emoji: '🍎', hunger: 15, weight: -1, happy: 0, sweet: false },
+  meat: { emoji: '🍖', hunger: 35, weight: 1, happy: 0, sweet: false },
+  bread: { emoji: '🍞', hunger: 30, weight: 3, happy: 0, sweet: false },
+  icecream: { emoji: '🍦', hunger: 12, weight: 3, happy: 8, sweet: true },
+  cake: { emoji: '🍰', hunger: 15, weight: 4, happy: 12, sweet: true },
+};
+const FOODS_BABY = ['milk'];
+const FOODS_CHILD = ['apple', 'meat', 'bread', 'icecream', 'cake'];
+function foodName(key) { return t('food.' + key); }
+
+// Spoiled food-refusal flavor lines live in i18n as brat.0 … brat.(N-1).
+const BRAT_LINE_COUNT = 3;
+
+// v3 timings & drifts.
+const POOP_NEED_MS = 90 * 1000; // countdown before an accident
+const MEALS_PER_POOP = 3;
+const ACHIEVEMENT_WINDOW_MS = 3 * 60 * 1000; // "deserved" cuddle window
+const MISBEHAVIOR_WINDOW_MS = 60 * 1000; // scold-valid window after a refusal
+const SPOILED_DECAY_PER_H = 1; // spoiled -1/h
+const WEIGHT_DRIFT_PER_H = 0.3; // weight drifts toward 30 at 0.3/h
+const WEIGHT_TARGET = 30;
+const RPS_STAMINA = 5;
+const SELF_POTTY_EDU = 60; // education >= this enables self-potty
+const TRAIN_HYGIENE_HIT = 12; // extra hygiene lost per training session
+
+// v4 — starvation (DESIGN §6). Neglect drains HP + weight after a grace period.
+const STARVE_GRACE_MS = 2 * 60 * 60 * 1000; // 2h since last feed before it bites
+const STARVE_HP_PER_HR = 0.125; // fraction of MAX HP lost per hour while starving
+const STARVE_WEIGHT_PER_HR = 100 / 6; // ~16.7/h ⇒ full weight gone in 6h
+
+// v4 — element display icons (UI only; the type chart lives in battle.js).
+// Labels are localized via t('element.<el>').
+const ELEMENT_ICON = {
+  none: '⚪', water: '💧', fire: '🔥', grass: '🌿',
+  earth: '⛰️', lightning: '⚡', dark: '🌑', light: '✨',
+};
+function elementIcon(el) {
+  return ELEMENT_ICON[el] || ELEMENT_ICON.none;
+}
+function elementLabel(el) {
+  return t('element.' + (ELEMENT_ICON[el] ? el : 'none'));
+}
+// Localized stage display name for any stage id.
+function stageLabel(stage) {
+  return t('stage.' + stage);
+}
+// Human-readable, localized unlock hint for a locked ability.
+function unlockHint(unlock) {
+  if (!unlock) return '';
+  switch (unlock.type) {
+    case 'always': return '';
+    case 'level': return t('unlock.reachLv', { value: unlock.value });
+    case 'trainings': return t('unlock.train', { value: unlock.value });
+    case 'weight': return t('unlock.weight', { value: unlock.value });
+    case 'education': return t('unlock.education', { value: unlock.value });
+    case 'wins': return t('unlock.wins', { value: unlock.value });
+    default: return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Small DOM helpers
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+function cap(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ---------------------------------------------------------------------------
+// Toast + reaction feedback
+// ---------------------------------------------------------------------------
+let toastTimer = 0;
+export function toast(msg) {
+  const el = $('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1900);
+}
+
+function reaction(emoji) {
+  const stageEl = $('pet-stage');
+  if (!stageEl) return;
+  const b = document.createElement('div');
+  b.className = 'reaction';
+  b.textContent = emoji;
+  b.style.left = 40 + Math.random() * 20 + '%';
+  stageEl.appendChild(b);
+  setTimeout(() => b.remove(), 1100);
+}
+
+function bouncePet() {
+  const svg = $('pet-svg');
+  if (!svg) return;
+  svg.classList.remove('pop');
+  // force reflow to restart animation
+  void svg.offsetWidth;
+  svg.classList.add('pop');
+}
+
+// ---------------------------------------------------------------------------
+// v4 — learning + death helpers
+// ---------------------------------------------------------------------------
+function isDead() {
+  return !!(state.pet && state.pet.state === 'dead');
+}
+
+function isStarving(pet) {
+  return !!(pet && pet.state !== 'dead' && pet.stage !== 'egg' &&
+    Date.now() - (pet.lastFedAt || 0) > STARVE_GRACE_MS);
+}
+
+// Re-check the learnset and toast any freshly-unlocked moves. Call after any
+// change to level / trainingsDone / weight / education / battleWins.
+function checkLearning() {
+  const pet = state.pet;
+  if (!pet) return;
+  const learned = checkUnlocks(pet);
+  for (const ab of learned) {
+    toast(t('toast.learned', { name: pet.name, icon: elementIcon(ab.element), move: ab.name }));
+  }
+  return learned;
+}
+
+// Called when hpCurrent reaches 0 (starvation only). Freezes the pet.
+function markDead() {
+  const pet = state.pet;
+  if (!pet || pet.state === 'dead') return;
+  pet.state = 'dead';
+  pet.hpCurrent = 0;
+  pet.sleeping = false;
+  save();
+}
+
+// Detect a fresh death after a care update (tick / offline catch-up).
+function detectDeath() {
+  const pet = state.pet;
+  if (!pet || pet.state === 'dead' || pet.stage === 'egg') return false;
+  if (pet.hpCurrent <= 0) {
+    markDead();
+    return true;
+  }
+  return false;
+}
+
+// Tap-to-send-off: fly the little angel up, then hatch a fresh egg (coins kept).
+let sendingOff = false;
+function handleSendOff() {
+  const pet = state.pet;
+  if (!pet || pet.state !== 'dead' || sendingOff) return;
+  sendingOff = true;
+  // Trigger the fly-away animation on the current (angel) render.
+  renderPetCustom({ dead: true, flyAway: true });
+  reaction('🕊️');
+  setTimeout(() => {
+    state.pet = rebirth(pet); // fresh egg, coins carried forward
+    sendingOff = false;
+    save();
+    showScreen('pet');
+    refresh();
+    toast(t('toast.newEggAppeared'));
+  }, 1050);
+}
+
+// ---------------------------------------------------------------------------
+// Screen router
+// ---------------------------------------------------------------------------
+export function showScreen(name) {
+  state.screen = name;
+  document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+  const el = $('screen-' + name);
+  if (el) el.classList.add('active');
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.classList.toggle('active', t.dataset.screen === name);
+  });
+  if (name === 'pet') refresh();
+  if (name === 'train') refreshTrain();
+}
+
+// ---------------------------------------------------------------------------
+// Care simulation
+// ---------------------------------------------------------------------------
+function applyDecay(pet, dtSec) {
+  if (dtSec <= 0) return;
+  if (pet.state === 'dead') return; // dead pets are frozen (no care sim)
+  const dtH = dtSec / 3600;
+  const c = pet.care;
+  const maxHp = computeStats(pet).hp;
+  if (typeof pet.hpCurrent !== 'number' || !isFinite(pet.hpCurrent)) pet.hpCurrent = maxHp;
+  const wounded = pet.hpCurrent < maxHp * 0.5; // <50% HP => happiness suffers faster
+  // Starvation (§6): only after the egg has hatched and 2h since the last feed.
+  const starving = pet.stage !== 'egg' && Date.now() - (pet.lastFedAt || 0) > STARVE_GRACE_MS;
+  // A poop on the floor makes hygiene decay 3× faster.
+  const hygMult = pet.poopInRoom ? 3 : 1;
+  if (pet.sleeping) {
+    c.hunger -= DECAY_SLEEP.hunger * dtH;
+    c.hygiene -= DECAY_SLEEP.hygiene * dtH * hygMult;
+    c.happiness += DECAY_SLEEP.happiness * dtH;
+  } else {
+    c.hunger -= DECAY_AWAKE.hunger * dtH;
+    c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1);
+    c.hygiene -= DECAY_AWAKE.hygiene * dtH * hygMult;
+  }
+  // neglect drags happiness down
+  if (c.hunger < 25 || c.hygiene < 25) c.happiness -= 6 * dtH;
+  c.hunger = clamp(c.hunger, 0, 100);
+  c.happiness = clamp(c.happiness, 0, 100);
+  c.hygiene = clamp(c.hygiene, 0, 100);
+  // v3 lifestyle drifts: spoiled fades, weight eases back toward its baseline.
+  pet.spoiled = clamp((pet.spoiled || 0) - SPOILED_DECAY_PER_H * dtH, 0, 100);
+  if (starving) {
+    // Starvation weight drain overrides the normal drift and applies even while
+    // asleep — a neglected pet keeps wasting away.
+    pet.weight = clamp(pet.weight - STARVE_WEIGHT_PER_HR * dtH, 0, 100);
+  } else {
+    const wDelta = WEIGHT_DRIFT_PER_H * dtH;
+    if (pet.weight > WEIGHT_TARGET) pet.weight = Math.max(WEIGHT_TARGET, pet.weight - wDelta);
+    else if (pet.weight < WEIGHT_TARGET) pet.weight = Math.min(WEIGHT_TARGET, pet.weight + wDelta);
+  }
+  // HP: starvation HP drain applies ONLY while awake (a sleeping pet can't
+  // starve to death — the sleep heal keeps running). Awake+starving overrides
+  // the passive heal entirely and can reach 0 (death).
+  if (starving && !pet.sleeping) {
+    pet.hpCurrent = clamp(pet.hpCurrent - maxHp * STARVE_HP_PER_HR * dtH, 0, maxHp);
+  } else {
+    // passive HP healing (awake +8%/h, sleeping +32%/h of max), floored at 1.
+    const healRate = pet.sleeping ? HEAL_RATE_SLEEP : HEAL_RATE_AWAKE;
+    pet.hpCurrent = clamp(pet.hpCurrent + maxHp * healRate * dtH, 1, maxHp);
+  }
+  // stamina regen: ~1 per 30s (2x sleeping)
+  const rate = pet.sleeping ? 2 : 1;
+  pet.stamina = clamp(pet.stamina + (dtSec / 30) * rate, 0, pet.genome.maxStamina);
+}
+
+function checkStageProgress(pet, dtSecOpen) {
+  if (pet.stage === 'egg') {
+    pet.eggOpenMs += dtSecOpen * 1000;
+    if (pet.eggOpenMs >= EGG_HATCH_MS) {
+      hatch();
+    }
+    return;
+  }
+  const dur = STAGE_DURATION_MS[pet.stage];
+  if (dur && Date.now() - pet.stageEnteredAt >= dur) {
+    if (advanceStage(pet)) {
+      toast(t('toast.grew', { name: pet.name, stage: stageLabel(pet.stage) }));
+      renderCurrentPet();
+    }
+  }
+}
+
+function hatch() {
+  const pet = state.pet;
+  if (!pet || pet.stage !== 'egg') return;
+  advanceStage(pet); // -> baby
+  pet.lastFedAt = Date.now(); // start the starvation clock at hatch, not egg birth
+  toast(t('toast.hatched', { name: pet.name }));
+  bouncePet();
+  reaction('🎉');
+  refresh();
+  save();
+}
+
+// The per-second tick (driven by main.js). dtSec is real elapsed seconds.
+export function tick(dtSec) {
+  const pet = state.pet;
+  if (!pet) return;
+  pet.lastTick = Date.now();
+  if (pet.state === 'dead') return; // frozen: wait for tap-to-send-off
+  applyDecay(pet, dtSec);
+  advancePoop(pet);
+  if (detectDeath()) {
+    refresh(); // starved to death this tick — show the send-off overlay
+    return;
+  }
+  checkStageProgress(pet, dtSec);
+  if (state.screen === 'pet') refreshBars();
+  if (state.screen === 'train') refreshTrain();
+  // periodic autosave (mutations also save explicitly)
+  saveThrottle += dtSec;
+  if (saveThrottle >= 8) {
+    saveThrottle = 0;
+    save();
+  }
+}
+
+// Offline catch-up (called once at load). Age progression counts real time;
+// egg hatch-by-time only counts app-open time so it is NOT advanced here.
+function offlineCatchUp(pet) {
+  const now = Date.now();
+  if (pet.state === 'dead') { pet.lastTick = now; return; }
+  let dt = (now - (pet.lastTick || now)) / 1000;
+  if (dt <= 1) {
+    pet.lastTick = now;
+    return;
+  }
+  dt = Math.min(dt, OFFLINE_CAP_MS / 1000);
+  applyDecay(pet, dt);
+  // A pet CAN die while the app is closed (classic tamagotchi neglect).
+  if (detectDeath()) { pet.lastTick = now; return; }
+  // A potty-need pending at close just becomes an accident (no live countdown).
+  if (pet.poopNeedUntil > 0) {
+    pet.poopNeedUntil = 0;
+    pet.poopInRoom = true;
+    pet.poopScolded = false;
+  }
+  // age-based stage progression across offline time (skip egg)
+  let guard = 0;
+  while (pet.stage !== 'egg' && guard++ < 5) {
+    const dur = STAGE_DURATION_MS[pet.stage];
+    if (dur && now - pet.stageEnteredAt >= dur) {
+      if (!advanceStage(pet)) break;
+    } else break;
+  }
+  pet.lastTick = now;
+}
+
+// ---------------------------------------------------------------------------
+// Care actions
+// ---------------------------------------------------------------------------
+function requirePet() {
+  return state.pet && state.pet.stage !== 'egg' && state.pet.state !== 'dead';
+}
+
+// Mark an achievement (battle/training/play win) — feeds "deserved" cuddles.
+function markAchievement() {
+  if (state.pet) state.pet.lastAchievementAt = Date.now();
+}
+
+// After a meal is eaten, count it and possibly trigger a potty need.
+function maybeTriggerPoopNeed(pet) {
+  if (pet.mealsSincePoop < MEALS_PER_POOP) return;
+  if (pet.poopNeedUntil > 0 || pet.poopInRoom) return; // already busy
+  pet.mealsSincePoop = 0;
+  if (pet.education >= SELF_POTTY_EDU && Math.random() < 0.5) {
+    // Well-schooled pet takes care of it on its own.
+    toast(t('toast.selfPotty', { name: pet.name }));
+  } else {
+    pet.poopNeedUntil = Date.now() + POOP_NEED_MS;
+    toast(t('toast.needsPotty', { name: pet.name }));
+  }
+}
+
+// Live countdown: an expired potty need turns into an accident on the floor.
+function advancePoop(pet) {
+  if (pet.poopNeedUntil > 0 && Date.now() >= pet.poopNeedUntil) {
+    pet.poopNeedUntil = 0;
+    pet.poopInRoom = true;
+    pet.poopScolded = false;
+    if (state.screen === 'pet') toast(t('toast.accident', { name: pet.name }));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Feed — opens a food picker; each food restores hunger and shifts weight.
+// ---------------------------------------------------------------------------
+export function openFoodPicker() {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  if (pet.care.hunger >= 98) {
+    toast(t('toast.stuffed', { name: pet.name }));
+    return;
+  }
+  const grid = $('food-grid');
+  if (grid) {
+    const keys = pet.stage === 'baby' ? FOODS_BABY : FOODS_CHILD;
+    grid.innerHTML = keys
+      .map((k) => {
+        const fd = FOODS[k];
+        return `<button class="food-item" data-food="${k}"><span class="f-ico">${fd.emoji}</span><span class="f-name">${foodName(k)}</span></button>`;
+      })
+      .join('');
+    grid.querySelectorAll('.food-item').forEach((btn) => {
+      btn.addEventListener('click', () => doFeedFood(btn.dataset.food));
+    });
+  }
+  openSheet('food-sheet');
+}
+
+export function doFeedFood(key) {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  const fd = FOODS[key];
+  if (!fd) return;
+  const c = pet.care;
+  // Spoiled pets may refuse non-sweet food; education tempers the tantrum.
+  if (!fd.sweet) {
+    const chance = (pet.spoiled / 150) * (1 - pet.education / 200);
+    if (Math.random() < chance) {
+      pet.lastMisbehaviorAt = Date.now();
+      const idx = Math.floor(Math.random() * BRAT_LINE_COUNT);
+      toast(t('brat.' + idx, { name: pet.name }));
+      reaction('💢');
+      closeSheet('food-sheet');
+      save();
+      return; // hunger not restored, meal not counted
+    }
+  }
+  c.hunger = clamp(c.hunger + fd.hunger, 0, 100);
+  c.happiness = clamp(c.happiness + fd.happy, 0, 100);
+  pet.weight = clamp(pet.weight + fd.weight, 0, 100);
+  pet.mealsSincePoop = (pet.mealsSincePoop || 0) + 1;
+  pet.lastFedAt = Date.now(); // any feed resets the starvation clock (§6)
+  reaction(fd.emoji);
+  bouncePet();
+  closeSheet('food-sheet');
+  toast(t('toast.enjoyedFood', { name: pet.name, food: foodName(key).toLowerCase() }));
+  maybeTriggerPoopNeed(pet);
+  checkLearning(); // weight may have crossed a milestone
+  afterAction('yum!');
+}
+
+// ---------------------------------------------------------------------------
+// Cuddle — deserved (recent achievement) gives more joy & no spoiling.
+// ---------------------------------------------------------------------------
+export function doCuddle() {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  const c = pet.care;
+  const deserved = pet.lastAchievementAt > 0 && Date.now() - pet.lastAchievementAt <= ACHIEVEMENT_WINDOW_MS;
+  if (deserved) {
+    c.happiness = clamp(c.happiness + 15, 0, 100);
+    toast(t('toast.cuddleDeserved', { name: pet.name }));
+  } else {
+    c.happiness = clamp(c.happiness + 6, 0, 100);
+    pet.spoiled = clamp(pet.spoiled + 8, 0, 100);
+    toast(t('toast.cuddleSpoiled', { name: pet.name }));
+  }
+  reaction('💗');
+  bouncePet();
+  afterAction('cuddle!');
+}
+
+// ---------------------------------------------------------------------------
+// Potty — resolve a pending need (no mess) or clean up an accident.
+// ---------------------------------------------------------------------------
+export function doPotty() {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  const c = pet.care;
+  if (pet.poopNeedUntil > 0) {
+    pet.poopNeedUntil = 0;
+    c.happiness = clamp(c.happiness + 4, 0, 100);
+    reaction('🚽');
+    toast(t('toast.pottyGood', { name: pet.name }));
+  } else if (pet.poopInRoom) {
+    pet.poopInRoom = false;
+    pet.poopScolded = false;
+    c.hygiene = clamp(c.hygiene + 8, 0, 100);
+    reaction('🧹');
+    toast(t('toast.messCleaned'));
+  } else {
+    toast(t('toast.noPottyNeeded', { name: pet.name }));
+    return;
+  }
+  bouncePet();
+  afterAction('potty!');
+}
+
+// ---------------------------------------------------------------------------
+// Scold — valid only for a fresh accident or a recent refusal.
+// ---------------------------------------------------------------------------
+export function doScold() {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  const c = pet.care;
+  const now = Date.now();
+  const poopValid = pet.poopInRoom && !pet.poopScolded;
+  const misValid = pet.lastMisbehaviorAt > 0 && now - pet.lastMisbehaviorAt <= MISBEHAVIOR_WINDOW_MS;
+  if (poopValid || misValid) {
+    pet.education = clamp(pet.education + 8, 0, 100);
+    pet.spoiled = clamp(pet.spoiled - 10, 0, 100);
+    c.happiness = clamp(c.happiness - 3, 0, 100);
+    if (poopValid) pet.poopScolded = true;
+    if (misValid) pet.lastMisbehaviorAt = 0;
+    reaction('📢');
+    toast(t('toast.scoldLearn', { name: pet.name }));
+    checkLearning(); // education may have crossed a milestone
+  } else {
+    c.happiness = clamp(c.happiness - 10, 0, 100);
+    reaction('😢');
+    toast(t('toast.scoldInvalid', { name: pet.name }));
+  }
+  afterAction('scold');
+}
+
+export function doClean() {
+  if (!requirePet()) return;
+  const c = state.pet.care;
+  c.hygiene = clamp(c.hygiene + 45, 0, 100);
+  c.happiness = clamp(c.happiness + 6, 0, 100);
+  reaction('🫧');
+  bouncePet();
+  afterAction('squeaky clean!');
+}
+
+export function doSleep() {
+  if (!requirePet()) return;
+  state.pet.sleeping = !state.pet.sleeping;
+  reaction(state.pet.sleeping ? '💤' : '☀️');
+  toast(state.pet.sleeping
+    ? t('toast.napping', { name: state.pet.name })
+    : t('toast.wokeUp', { name: state.pet.name }));
+  renderCurrentPet();
+  refresh();
+  save();
+}
+
+// Play = a quick Rock-Paper-Scissors minigame (see RPS section below).
+export function doPlay() {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  if (pet.sleeping) pet.sleeping = false;
+  if (pet.stamina < RPS_STAMINA) {
+    toast(t('toast.tooPooped', { name: pet.name }));
+    return;
+  }
+  openRps();
+}
+
+export function doHeal() {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  const maxHp = computeStats(pet).hp;
+  if (pet.hpCurrent >= maxHp) {
+    toast(t('toast.fullHealth'));
+    return;
+  }
+  const free = healCooldownRemaining(pet) <= 0;
+  if (free) {
+    pet.lastFreeHealAt = Date.now();
+  } else {
+    if ((pet.coins || 0) < HEAL_COST) {
+      toast(t('toast.notEnoughCoins'));
+      return;
+    }
+    pet.coins -= HEAL_COST;
+  }
+  pet.hpCurrent = maxHp;
+  reaction('🩹');
+  bouncePet();
+  toast(free ? t('toast.patchedUp', { name: pet.name }) : t('toast.healedCost', { cost: HEAL_COST }));
+  afterAction('healed!');
+}
+
+function afterAction(mood) {
+  refresh();
+  save();
+}
+
+// ---------------------------------------------------------------------------
+// Training
+// ---------------------------------------------------------------------------
+export function doTrain(name) {
+  const pet = state.pet;
+  const ex = EXERCISES[name];
+  if (!pet || !ex) return;
+  if (pet.state === 'dead') return;
+  if (pet.stage === 'egg') {
+    toast(t('toast.eggFirst'));
+    return;
+  }
+  if (pet.sleeping) {
+    toast(t('toast.asleep', { name: pet.name }));
+    return;
+  }
+  if (pet.stamina < ex.stam) {
+    toast(t('toast.tooTired', { name: pet.name }));
+    return;
+  }
+  // Refusal (free): laziness + spoiled, tempered by education.
+  const refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
+  if (Math.random() < refuseChance) {
+    pet.lastMisbehaviorAt = Date.now();
+    const idx = Math.floor(Math.random() * LAZY_LINE_COUNT);
+    toast(t('lazy.' + idx, { name: pet.name }));
+    reaction('💢');
+    save();
+    return;
+  }
+  // pay costs
+  pet.stamina = clamp(pet.stamina - ex.stam, 0, pet.genome.maxStamina);
+  pet.care.hunger = clamp(pet.care.hunger - ex.hunger, 0, 100);
+  pet.care.hygiene = clamp(pet.care.hygiene - ex.hygiene - TRAIN_HYGIENE_HIT, 0, 100);
+  // Working out burns a little weight (running burns the most).
+  pet.weight = clamp(pet.weight - (name === 'Run' ? 2.5 : 1.5), 0, 100);
+  // gain = base * affinity * diminishing(current training)
+  const cur = pet.training[ex.stat] || 0;
+  const dim = 1 / (1 + cur * 0.05);
+  const gain = ex.base * pet.genome.affinity[ex.stat] * dim;
+  addTraining(pet, ex.stat, gain);
+  const leveled = grantXp(pet, 6);
+  pet.trainingsDone = (pet.trainingsDone || 0) + 1; // feeds 'trainings' unlocks
+  markAchievement(); // a completed session counts as an achievement
+  reaction(ex.emoji);
+  bouncePet();
+  const shown = Math.max(1, Math.round(gain * 10) / 10);
+  toast(t('toast.trained', { name: pet.name, ex: t('train.' + name.toLowerCase()), amount: shown, stat: ex.label }));
+  if (leveled > 0) setTimeout(() => toast(t('toast.reachedLevel', { name: pet.name, level: pet.level })), 700);
+  // Level up, a completed session, and possible weight loss can all unlock moves.
+  setTimeout(checkLearning, leveled > 0 ? 1100 : 400);
+  refresh();
+  refreshTrain();
+  save();
+}
+
+// ---------------------------------------------------------------------------
+// Bottom-sheet helpers (food picker / RPS)
+// ---------------------------------------------------------------------------
+function openSheet(id) {
+  const el = $(id);
+  if (el) el.classList.add('open');
+}
+function closeSheet(id) {
+  const el = $(id);
+  if (el) el.classList.remove('open');
+}
+
+// ---------------------------------------------------------------------------
+// Play — Rock-Paper-Scissors minigame (UI-side Math.random, NOT the engine).
+// ---------------------------------------------------------------------------
+const RPS_EMOJI = { rock: '✊', paper: '✋', scissors: '✌️' };
+const RPS_BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
+
+function openRps() {
+  const pet = state.pet;
+  const nameEl = $('rps-petname');
+  if (nameEl) nameEl.textContent = pet ? pet.name : 'Pet';
+  setText('rps-you', '❔');
+  setText('rps-pet', '❔');
+  setText('rps-result', t('rps.pick'));
+  openSheet('rps-sheet');
+}
+
+export function playRps(choice) {
+  if (!requirePet()) return;
+  const pet = state.pet;
+  if (!RPS_EMOJI[choice]) return;
+  if (pet.stamina < RPS_STAMINA) {
+    toast(t('toast.tooPooped', { name: pet.name }));
+    return;
+  }
+  pet.stamina = clamp(pet.stamina - RPS_STAMINA, 0, pet.genome.maxStamina);
+  const opts = ['rock', 'paper', 'scissors'];
+  const petChoice = opts[Math.floor(Math.random() * opts.length)];
+  const youEl = $('rps-you');
+  const petEl = $('rps-pet');
+  if (youEl) {
+    youEl.textContent = RPS_EMOJI[choice];
+    youEl.classList.remove('reveal');
+    void youEl.offsetWidth;
+    youEl.classList.add('reveal');
+  }
+  if (petEl) {
+    petEl.textContent = RPS_EMOJI[petChoice];
+    petEl.classList.remove('reveal');
+    void petEl.offsetWidth;
+    petEl.classList.add('reveal');
+  }
+  const c = pet.care;
+  let msg;
+  if (choice === petChoice) {
+    c.happiness = clamp(c.happiness + 6, 0, 100);
+    msg = t('rps.tie');
+  } else if (RPS_BEATS[choice] === petChoice) {
+    c.happiness = clamp(c.happiness + 12, 0, 100);
+    markAchievement();
+    msg = t('rps.win');
+  } else {
+    c.happiness = clamp(c.happiness + 4, 0, 100);
+    msg = t('rps.lose', { name: pet.name });
+  }
+  setText('rps-result', msg);
+  refresh();
+  save();
+}
+
+// ---------------------------------------------------------------------------
+// Poop indicators (need badge + countdown, and the on-floor mess)
+// ---------------------------------------------------------------------------
+function refreshPoopUI() {
+  const pet = state.pet;
+  const need = $('poop-need');
+  const mess = $('poop-mess');
+  if (!pet) return;
+  if (need) {
+    if (pet.poopNeedUntil > 0) {
+      need.style.display = '';
+      const secs = Math.max(0, Math.ceil((pet.poopNeedUntil - Date.now()) / 1000));
+      const t = $('poop-timer');
+      if (t) t.textContent = secs;
+    } else {
+      need.style.display = 'none';
+    }
+  }
+  if (mess) mess.style.display = pet.poopInRoom ? '' : 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Info panel (level, XP, battle stats, lifestyle, species traits)
+// ---------------------------------------------------------------------------
+export function toggleInfo(force) {
+  const panel = $('info-panel');
+  if (!panel) return;
+  const open = force == null ? !panel.classList.contains('open') : force;
+  panel.classList.toggle('open', open);
+  if (open) renderInfo();
+}
+
+function renderInfo() {
+  const pet = state.pet;
+  if (!pet) return;
+  setText('info-name', pet.name);
+  setText('info-stage', pet.stage === 'egg'
+    ? stageLabel('egg')
+    : stageLabel(pet.stage) + ' · ' + t('info.lv', { n: pet.level }));
+  const need = xpForNext(pet.level);
+  const xpFill = $('info-xp');
+  if (xpFill) xpFill.style.width = clamp((pet.xp / need) * 100, 0, 100) + '%';
+  setText('info-xp-label', t('info.xp', { cur: Math.floor(pet.xp), need }));
+  const stats = computeStats(pet);
+  setChip('stat-str', stats.str);
+  setChip('stat-hp', stats.hp);
+  setChip('stat-spd', stats.spd);
+  setChip('stat-def', stats.def);
+  setChip('stat-crit', stats.crit);
+  setLife('life-weight', 'life-weight-v', pet.weight);
+  setLife('life-edu', 'life-edu-v', pet.education);
+  setLife('life-spoiled', 'life-spoiled-v', pet.spoiled);
+  setChip('trait-stamina', pet.genome.maxStamina);
+  setChip('trait-lazy', pet.genome.laziness.toFixed(2));
+
+  // Element line.
+  const el = ELEMENTS.indexOf(pet.genome.element) >= 0 ? pet.genome.element : 'none';
+  setText('info-element', `${elementIcon(el)} ${elementLabel(el)}`);
+
+  // Moveset: known moves highlighted, locked ones show an unlock hint.
+  const movesEl = $('info-moves');
+  if (movesEl) {
+    const known = new Set(Array.isArray(pet.moves) ? pet.moves : ['attack']);
+    movesEl.innerHTML = getLearnset(pet)
+      .map((ab) => {
+        const unlocked = known.has(ab.id);
+        const ic = elementIcon(ab.element);
+        const pw = `×${ab.power.toFixed(2)}`;
+        const right = unlocked
+          ? `<span class="move-pw">${pw}</span>`
+          : `<span class="move-hint">🔒 ${unlockHint(ab.unlock)}</span>`;
+        return `<div class="move-item${unlocked ? '' : ' locked'}"><span class="move-ico">${ic}</span><span class="move-name">${ab.name}</span>${right}</div>`;
+      })
+      .join('');
+  }
+}
+
+function setLife(barId, valId, v) {
+  const bar = $(barId);
+  if (bar) bar.style.width = clamp(v, 0, 100) + '%';
+  setChip(valId, Math.round(v));
+}
+function setText(id, s) {
+  const el = $(id);
+  if (el) el.textContent = s;
+}
+
+// ---------------------------------------------------------------------------
+// Rendering the pet + UI refresh
+// ---------------------------------------------------------------------------
+export function renderCurrentPet() {
+  renderPetCustom(null);
+}
+
+// Render the current pet with optional extra opts (used by the send-off
+// fly-away animation, which passes { dead:true, flyAway:true }).
+function renderPetCustom(extra) {
+  const pet = state.pet;
+  const svg = $('pet-svg');
+  if (!pet || !svg) return;
+  const mood = pet.sleeping ? 'sleepy' : pet.care.happiness < 30 ? 'sad' : 'idle';
+  // Chubbiness: map weight 30..100 -> 0..1 so a heavier pet looks squatter.
+  const chubby = clamp((pet.weight - 30) / 70, 0, 1);
+  const opts = {
+    animate: true,
+    mood,
+    tired: pet.sleeping,
+    eggTaps: pet.eggTaps,
+    chubby,
+    element: pet.genome.element,
+    dead: pet.state === 'dead',
+  };
+  if (extra) Object.assign(opts, extra);
+  renderPet(svg, pet.genome, pet.stage, opts);
+}
+
+const BAR_KEYS = ['hunger', 'happiness', 'hygiene'];
+
+function refreshBars() {
+  const pet = state.pet;
+  if (!pet) return;
+  for (const k of BAR_KEYS) {
+    const fill = $('bar-' + k);
+    if (fill) {
+      const v = Math.round(pet.care[k]);
+      fill.style.width = v + '%';
+      fill.parentElement.classList.toggle('low', v < 25);
+    }
+  }
+  // HP bar (% of max). Below 50% = wounded => pulse.
+  const maxHp = computeStats(pet).hp;
+  const hp = $('bar-hp');
+  if (hp) {
+    const pct = clamp((pet.hpCurrent / maxHp) * 100, 0, 100);
+    hp.style.width = pct + '%';
+    hp.parentElement.classList.toggle('low', pct < 50);
+  }
+  // Stamina bar (% of max).
+  const st = $('bar-stamina');
+  if (st) {
+    const pct = clamp((pet.stamina / pet.genome.maxStamina) * 100, 0, 100);
+    st.style.width = pct + '%';
+    const lbl = $('stamina-label');
+    if (lbl) lbl.textContent = `${Math.floor(pet.stamina)}/${pet.genome.maxStamina}`;
+  }
+  refreshPoopUI();
+  const starveBadge = $('starve-badge');
+  if (starveBadge) starveBadge.style.display = isStarving(pet) ? '' : 'none';
+}
+
+export function refresh() {
+  const pet = state.pet;
+  if (!pet) return;
+  renderCurrentPet();
+  refreshBars();
+
+  const nameEl = $('pet-name');
+  if (nameEl) nameEl.textContent = pet.name;
+  const stageEl = $('pet-stage-label');
+  if (stageEl) stageEl.textContent = pet.stage === 'egg'
+    ? stageLabel('egg')
+    : stageLabel(pet.stage) + ' · ' + t('info.lv', { n: pet.level });
+
+  const stats = computeStats(pet);
+  // Level/XP, battle stats and lifestyle now live in the info panel; keep it
+  // fresh so it's up to date whenever the player slides it open.
+  renderInfo();
+
+  // death / egg / living UI
+  const eggHint = $('egg-hint');
+  const careUI = $('care-ui');
+  const deathOverlay = $('death-overlay');
+  const dead = pet.state === 'dead';
+  if (deathOverlay) {
+    deathOverlay.style.display = dead ? '' : 'none';
+    if (dead) {
+      const dt = $('death-text');
+      if (dt) dt.textContent = t('pet.deathText', { name: pet.name });
+    }
+  }
+  if (dead) {
+    if (eggHint) eggHint.style.display = 'none';
+    if (careUI) careUI.style.display = 'none';
+  } else if (pet.stage === 'egg') {
+    if (eggHint) {
+      eggHint.style.display = '';
+      const tapsLeft = Math.max(0, EGG_HATCH_TAPS - pet.eggTaps);
+      eggHint.textContent = t('pet.eggHintTaps', { taps: tapsLeft });
+    }
+    if (careUI) careUI.style.display = 'none';
+  } else {
+    if (eggHint) eggHint.style.display = 'none';
+    if (careUI) careUI.style.display = '';
+  }
+
+  // sleep button label
+  const sleepBtn = $('btn-sleep');
+  if (sleepBtn) sleepBtn.querySelector('.act-label').textContent = pet.sleeping ? t('action.wake') : t('action.sleep');
+
+  // coins in the top bar
+  const coinsEl = $('pet-coins');
+  if (coinsEl) coinsEl.textContent = `🪙 ${pet.coins || 0}`;
+
+  // wounded status badge (HP < 50% of max)
+  const statusEl = $('pet-status');
+  const woundedNow = pet.stage !== 'egg' && pet.hpCurrent < stats.hp * 0.5;
+  if (statusEl) statusEl.style.display = woundedNow ? '' : 'none';
+
+  // heal button label: free when off cooldown, else remaining time or coin cost
+  const healBtn = $('btn-heal');
+  if (healBtn) {
+    const lbl = healBtn.querySelector('.act-label');
+    if (lbl) {
+      const remain = healCooldownRemaining(pet);
+      lbl.textContent = remain <= 0 ? t('action.heal') : t('action.healCooldown', { time: fmtDuration(remain) });
+    }
+  }
+}
+
+// Milliseconds until the next free heal (0 = free heal available now).
+function healCooldownRemaining(pet) {
+  const last = typeof pet.lastFreeHealAt === 'number' ? pet.lastFreeHealAt : 0;
+  return Math.max(0, last + HEAL_FREE_COOLDOWN_MS - Date.now());
+}
+
+// Compact duration label like "3h", "2h 13m", "12m".
+function fmtDuration(ms) {
+  const totalMin = Math.ceil(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
+
+function setChip(id, v) {
+  const el = $(id);
+  if (el) el.textContent = v;
+}
+
+function refreshTrain() {
+  const pet = state.pet;
+  if (!pet) return;
+  const st = $('train-stamina');
+  if (st) st.textContent = t('train.staminaValue', { cur: Math.floor(pet.stamina), max: pet.genome.maxStamina });
+  const stFill = $('train-stamina-fill');
+  if (stFill) stFill.style.width = (pet.stamina / pet.genome.maxStamina) * 100 + '%';
+  // disable exercises the pet can't afford
+  document.querySelectorAll('.exercise').forEach((btn) => {
+    const ex = EXERCISES[btn.dataset.ex];
+    if (!ex) return;
+    btn.classList.toggle('disabled', pet.stamina < ex.stam || pet.stage === 'egg');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Egg tapping
+// ---------------------------------------------------------------------------
+function tapEgg() {
+  const pet = state.pet;
+  if (!pet || pet.stage !== 'egg') return;
+  pet.eggTaps++;
+  bouncePet();
+  reaction('💗');
+  if (pet.eggTaps >= EGG_HATCH_TAPS) {
+    hatch();
+  } else {
+    refresh();
+    save();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// New egg / reset
+// ---------------------------------------------------------------------------
+export function newEgg(name, seed) {
+  state.pet = createPet(name, seed != null ? seed >>> 0 : randomSeed());
+  save();
+  showScreen('pet');
+  refresh();
+  toast(t('toast.mysteriousEgg'));
+}
+
+export function resetGame() {
+  clearGame();
+  newEgg('Slime', randomSeed());
+}
+
+export function save() {
+  saveGame(state);
+}
+
+// ---------------------------------------------------------------------------
+// Battle glue for Agent B (window.SlimeGame)
+// ---------------------------------------------------------------------------
+const BATTLE_STAMINA_COST = 25;
+
+function canBattle() {
+  return !!(state.pet && state.pet.stage !== 'egg' && state.pet.state !== 'dead' &&
+    state.pet.stamina >= BATTLE_STAMINA_COST);
+}
+
+function payBattleCost() {
+  const pet = state.pet;
+  if (!pet) return;
+  pet.stamina = clamp(pet.stamina - BATTLE_STAMINA_COST, 0, pet.genome.maxStamina);
+  pet.care.hunger = clamp(pet.care.hunger - 8, 0, 100);
+  save();
+}
+
+// Coin rewards for winning a battle.
+const COINS_WILD_WIN = 15;
+const COINS_PVP_WIN = 25;
+const COINS_RIVAL_WIN = 20;
+
+// Called by battle-ui once a battle ends. `info` carries:
+//   remainingHp : the player's fighter HP at battle end (int)
+//   kind        : 'wild' | 'pvp'
+//   draw        : true if the battle was a draw
+// Returns { leveledUp, coins } for the result screen.
+function grantBattleResult(won, info) {
+  const pet = state.pet;
+  if (!pet) return { leveledUp: 0, coins: 0 };
+  info = info || {};
+  const leveled = grantBattleXp(pet, won);
+  const maxHp = computeStats(pet).hp;
+
+  // HP writeback (DESIGN v4 §4 — updated rule):
+  //  win / draw ⇒ keep the ACTUAL in-battle HP the fighter walked away with.
+  //  loss (faint) ⇒ 5% of max HP. Battles NEVER kill (5% > 0 ⇒ floor 1).
+  if (won || info.draw) {
+    if (typeof info.remainingHp === 'number' && isFinite(info.remainingHp)) {
+      pet.hpCurrent = clamp(info.remainingHp, 1, maxHp);
+    }
+    if (info.draw && !won) {
+      // draw: no happiness penalty
+    }
+  } else {
+    pet.hpCurrent = Math.max(1, Math.round(0.05 * maxHp));
+    pet.care.happiness = clamp(pet.care.happiness - 15, 0, 100);
+  }
+
+  let coins = 0;
+  if (won) {
+    coins = info.kind === 'pvp' ? COINS_PVP_WIN
+      : info.kind === 'rival' ? COINS_RIVAL_WIN
+      : COINS_WILD_WIN;
+    pet.coins = (pet.coins || 0) + coins;
+    pet.battleWins = (pet.battleWins || 0) + 1; // feeds 'wins' unlocks
+    markAchievement();
+  }
+
+  // A win (XP/level + battleWins) can unlock new moves.
+  checkLearning();
+
+  save();
+  refresh();
+  return { leveledUp: leveled, coins };
+}
+
+// ---------------------------------------------------------------------------
+// Init & event wiring
+// ---------------------------------------------------------------------------
+export function initGame() {
+  const loaded = loadGame();
+  if (loaded && loaded.pet) {
+    state.pet = loaded.pet;
+    state.settings = loaded.settings || {};
+    offlineCatchUp(state.pet);
+  } else {
+    state.pet = createPet('Slime', randomSeed());
+  }
+  // Silently sync moves for migrated saves (no toasts on first load).
+  if (state.pet) checkUnlocks(state.pet);
+  save();
+
+  // tab bar
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.addEventListener('click', () => {
+      const scr = t.dataset.screen;
+      if (scr === 'battle') {
+        if (window.SlimeBattle && typeof window.SlimeBattle.openMenu === 'function') {
+          showScreen('battle');
+          window.SlimeBattle.openMenu();
+        } else {
+          toast(t('toast.battlesComingSoon'));
+        }
+        return;
+      }
+      showScreen(scr);
+    });
+  });
+
+  // care action buttons
+  bindClick('btn-feed', openFoodPicker);
+  bindClick('btn-clean', doClean);
+  bindClick('btn-sleep', doSleep);
+  bindClick('btn-play', doPlay);
+  bindClick('btn-heal', doHeal);
+  bindClick('btn-cuddle', doCuddle);
+  bindClick('btn-potty', doPotty);
+  bindClick('btn-scold', doScold);
+
+  // info panel toggle
+  bindClick('btn-info', () => toggleInfo());
+  bindClick('btn-info-close', () => toggleInfo(false));
+
+  // sheet close buttons + tap-on-backdrop to dismiss
+  bindClick('food-close', () => closeSheet('food-sheet'));
+  bindClick('rps-close', () => closeSheet('rps-sheet'));
+  bindSheetBackdrop('food-sheet');
+  bindSheetBackdrop('rps-sheet');
+
+  // RPS move buttons
+  document.querySelectorAll('.rps-btn').forEach((btn) => {
+    btn.addEventListener('click', () => playRps(btn.dataset.rps));
+  });
+
+  // egg tap / send-off tap
+  const stageEl = $('pet-stage');
+  if (stageEl) stageEl.addEventListener('click', () => {
+    if (!state.pet) return;
+    if (state.pet.state === 'dead') handleSendOff();
+    else if (state.pet.stage === 'egg') tapEgg();
+  });
+
+  // training exercises
+  document.querySelectorAll('.exercise').forEach((btn) => {
+    btn.addEventListener('click', () => doTrain(btn.dataset.ex));
+  });
+
+  // menu buttons
+  bindClick('btn-new-egg', () => {
+    const nameInput = $('menu-name');
+    const nm = nameInput && nameInput.value ? nameInput.value : 'Slime';
+    newEgg(nm, randomSeed());
+  });
+  bindClick('btn-rename', () => {
+    const nameInput = $('menu-name');
+    if (state.pet && nameInput && nameInput.value.trim()) {
+      state.pet.name = nameInput.value.trim();
+      save();
+      refresh();
+      toast(t('toast.renamed'));
+    }
+  });
+  bindClick('btn-reset', () => {
+    if (confirm(t('confirm.reset'))) resetGame();
+  });
+
+  // populate menu name field
+  const nameInput = $('menu-name');
+  if (nameInput && state.pet) nameInput.value = state.pet.name;
+
+  // language selector (Menu screen) + live re-render wiring
+  document.querySelectorAll('.lang-btn').forEach((btn) => {
+    btn.addEventListener('click', () => setLang(btn.dataset.lang));
+  });
+  // Re-run every screen's render when the language changes so on-screen text
+  // (including dynamic labels) updates live without a reload.
+  onLangChange(() => {
+    applyStaticI18n(document);
+    highlightActiveLang();
+    if (state.pet) refresh();
+    refreshTrain();
+  });
+  // First paint: fill all static data-i18n text and highlight the saved language.
+  applyStaticI18n(document);
+  highlightActiveLang();
+
+  showScreen('pet');
+  refresh();
+
+  // dev accelerator
+  window.DEV = window.DEV || {};
+  window.DEV.grow = () => {
+    if (!state.pet) return;
+    if (advanceStage(state.pet)) {
+      toast(`DEV: grew to ${state.pet.stage}`);
+      refresh();
+      save();
+    }
+    return state.pet.stage;
+  };
+  window.DEV.state = () => state;
+  // Set HP to pct% of max (default 25) for testing the wounded/heal flow.
+  window.DEV.hurt = (pct) => {
+    if (!state.pet) return;
+    const maxHp = computeStats(state.pet).hp;
+    const p = typeof pct === 'number' ? pct : 25;
+    state.pet.hpCurrent = clamp((p / 100) * maxHp, 1, maxHp);
+    refresh();
+    save();
+    return state.pet.hpCurrent;
+  };
+  // Set the coin balance for testing the paid-heal path.
+  window.DEV.coins = (n) => {
+    if (!state.pet) return;
+    state.pet.coins = Math.max(0, Math.floor(Number(n) || 0));
+    refresh();
+    save();
+    return state.pet.coins;
+  };
+  // v3 lifestyle test helpers.
+  window.DEV.meal = () => {
+    if (!state.pet) return;
+    state.pet.mealsSincePoop = (state.pet.mealsSincePoop || 0) + 1;
+    maybeTriggerPoopNeed(state.pet);
+    refresh();
+    save();
+    return state.pet.mealsSincePoop;
+  };
+  window.DEV.spoil = (n) => {
+    if (!state.pet) return;
+    state.pet.spoiled = clamp(Number(n) || 0, 0, 100);
+    refresh();
+    save();
+    return state.pet.spoiled;
+  };
+  window.DEV.edu = (n) => {
+    if (!state.pet) return;
+    state.pet.education = clamp(Number(n) || 0, 0, 100);
+    refresh();
+    save();
+    return state.pet.education;
+  };
+  window.DEV.weight = (n) => {
+    if (!state.pet) return;
+    state.pet.weight = clamp(Number(n) || 0, 0, 100);
+    refresh();
+    save();
+    return state.pet.weight;
+  };
+  // v4 test helpers.
+  // Backdate the last feed by `hours` (default 3) to simulate neglect.
+  window.DEV.starve = (hours) => {
+    if (!state.pet) return;
+    const h = typeof hours === 'number' ? hours : 3;
+    state.pet.lastFedAt = Date.now() - h * 3600e3;
+    refresh();
+    save();
+    return state.pet.lastFedAt;
+  };
+  // Force death (starvation-style) to test the send-off / rebirth flow.
+  window.DEV.kill = () => {
+    if (!state.pet) return;
+    state.pet.hpCurrent = 0;
+    markDead();
+    refresh();
+    return state.pet.state;
+  };
+  // Inspect element + learnset unlock state.
+  window.DEV.moves = () => {
+    if (!state.pet) return;
+    return { element: state.pet.genome.element, known: state.pet.moves, learnset: getLearnset(state.pet) };
+  };
+  // Simulate a battle result (for HP-writeback / unlock testing).
+  window.DEV.battle = (won, remainingHp, kind) =>
+    grantBattleResult(!!won, { remainingHp, kind: kind || 'wild', draw: false });
+
+  // glue for Agent B's battle/net code
+  window.SlimeGame = {
+    getPet: () => state.pet,
+    snapshot: () => (state.pet ? battleSnapshot(state.pet) : null),
+    canBattle,
+    payBattleCost,
+    grantBattleResult,
+    showScreen,
+    showPet: () => showScreen('pet'),
+    toast,
+    refresh,
+    renderPet, // convenience re-export
+  };
+
+  return state;
+}
+
+function bindClick(id, fn) {
+  const el = $(id);
+  if (el) el.addEventListener('click', fn);
+}
+
+// Highlight the currently-active language button in the Menu screen.
+function highlightActiveLang() {
+  const lang = getLang();
+  document.querySelectorAll('.lang-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.lang === lang);
+  });
+}
+
+// Dismiss a bottom sheet when its dark backdrop (not the sheet itself) is tapped.
+function bindSheetBackdrop(id) {
+  const el = $(id);
+  if (el) el.addEventListener('click', (e) => {
+    if (e.target === el) closeSheet(id);
+  });
+}
+
+export { state };

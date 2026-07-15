@@ -1,0 +1,160 @@
+# SlimePets — Spec (v3)
+
+Mobile-first HTML5 tamagotchi with procedurally-generated kawaii slime pets, life stages, training, and turn-based battles (vs AI now; PvP via QR/WebRTC).
+
+**Stack:** plain HTML + ES modules + SVG rendering. No build step. localStorage persistence. English UI. Target: phone portrait (~380×800), but responsive.
+
+**External libs (CDN, loaded in index.html):**
+- PeerJS `https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js` (global `Peer`)
+- qrcodejs `https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js` (global `QRCode`)
+- jsQR `https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js` (global `jsQR`) — fallback when `BarcodeDetector` is unavailable
+
+## File ownership
+
+| File | Owner |
+|---|---|
+| `index.html`, `css/style.css` | Agent A |
+| `js/main.js` (boot, screen router, game loop) | Agent A |
+| `js/pet.js` (genome gen, pet model, stats, serialization) | Agent A |
+| `js/render.js` (SVG pet renderer) | Agent A |
+| `js/game.js` (care + training logic & UI bindings) | Agent A |
+| `js/storage.js` (save/load, offline catch-up) | Agent A |
+| `js/battle.js` (PURE battle engine, no DOM) | Agent B |
+| `js/battle-ai.js` (AI opponent gen + action picker) | Agent B |
+| `js/net.js` (PeerJS host/join, QR show/scan, protocol) | Agent B |
+| `js/battle-ui.js` (battle screen DOM: reads engine events, renders) | Agent B |
+
+Agent B renders pets in battle by calling `renderPet(svgEl, genome, stage, opts)` from `js/render.js` and must not duplicate the renderer. Agent B's screens live inside `<div id="screen-battle">` and `<div id="screen-link">` which Agent A creates (empty shells) in index.html.
+
+## Shared data contracts (BOTH AGENTS MUST MATCH EXACTLY)
+
+### Genome
+```js
+{
+  seed: 123456789,            // uint32, drives everything deterministic
+  bodyShape: 'blob'|'drop'|'square'|'spiky'|'mochi',
+  hue: 0..359, hue2: 0..359,  // pastel palette base hues (primary body, accent)
+  eyes: 'round'|'sparkle'|'sleepy'|'oval'|'star',
+  mouth: 'smile'|'cat'|'open'|'w',
+  ears: 'none'|'cat'|'bunny'|'floppy'|'round',
+  horn: 'none'|'single'|'double'|'antlers',
+  nose: 'none'|'dot'|'triangle',
+  cheeks: true|false,          // blush
+  tail: 'none'|'nub'|'curl'|'fox',
+  pattern: 'none'|'spots'|'belly',
+  // innate species traits (derived at generation time):
+  maxStamina: 60..140,         // int
+  laziness: 0.0..1.0,          // float, 2 decimals
+  affinity: { str: 0.7..1.3, hp: 0.7..1.3, spd: 0.7..1.3, def: 0.7..1.3, crit: 0.7..1.3 }
+}
+```
+
+### Stages
+`'egg' | 'baby' | 'child' | 'teen' | 'adult'` — visual evolution: baby = pure slime blob (body+eyes+mouth+cheeks only); child adds ears+horn; teen adds nose+tail+leg stubs; adult = full animal-like (legs, arms/paws, tail, pattern, more defined silhouette). Always kawaii/pastel.
+
+### Battle snapshot (what crosses the network / feeds the engine)
+```js
+{
+  name: 'Mochi',
+  genome: {...},               // full genome above
+  stage: 'teen',
+  level: 7,                    // int >= 1
+  stats: { hp: 58, str: 14, spd: 11, def: 9, crit: 8 },  // ints; hp = MAX HP
+  hpCurrent: 41                // int floor(pet.hpCurrent); a side's starting HP in battle
+}
+```
+`pet.js` exports `battleSnapshot(pet)` producing exactly this. `stats.hp` is the
+MAX (ceiling) HP; `hpCurrent` is the persistent current HP the fighter starts a
+battle at. `createBattle` uses `hpCurrent` when present & valid (>0), otherwise
+falls back to `stats.hp` (back-compat with older snapshots / wild opponents).
+
+### Battle engine API (js/battle.js — pure functions, deterministic)
+```js
+createBattle(snapA, snapB, seed) -> state        // state is a plain serializable object
+legalActions(state, side) -> ['attack','guard','charge','special']
+applyTurn(state, actionA, actionB) -> { state, events: [...], winner: null|'A'|'B'|'draw' }
+```
+- Deterministic: same snapshots+seed+actions ⇒ same result (use a seeded PRNG, e.g. mulberry32; NEVER Math.random in the engine).
+- Turn order by spd (tie → seeded coin flip). Damage ≈ str vs def with variance ±15%, crit chance from crit stat (crit ×1.6). `guard`: halve incoming damage this turn. `charge`: skip attack, next attack ×1.8. `special`: depends on bodyShape (blob=heal 20%, drop=spd buff, square=def buff, spiky=recoil heavy hit, mochi=lower enemy str), usable once per battle.
+- `events` = ordered list of `{type:'hit'|'crit'|'guard'|'charge'|'special'|'faint'|'text', side:'A'|'B', dmg?, text}` for the UI to animate.
+- Battles end ≤ 30 turns (then higher remaining HP% wins, tie = draw).
+
+### Net protocol (js/net.js, PeerJS DataChannel, JSON messages)
+Host creates peer, shows QR of its peer id (also shows the id as text for manual entry). Guest scans/enters, connects.
+1. guest→host `{t:'hello', snap}` 2. host→guest `{t:'start', snap, seed}` (host picks seed; host is side A)
+3. each turn both send `{t:'act', turn:n, action}` — a side's action is locked once sent; when both actions for turn n are known, BOTH clients call `applyTurn` locally (no result exchange needed — engine is deterministic)
+4. `{t:'bye'}` on exit. Handle disconnect ⇒ show "opponent left", return to menu.
+
+### Rewards (v2)
+Winner +XP (level up = small all-stat gain via `pet.js` `grantBattleXp(pet, won)`), loser small XP. Battle costs **25 stamina + 8 hunger** (no energy stat anymore).
+- **Coins** are earned ONLY by winning: **+15 for a wild win, +20 for a Rival win, +25 for a PvP win**. Shown on the result screen. There is no coin cost to battle.
+- **HP is persistent.** After a battle the player's remaining HP is written back to `pet.hpCurrent`. On a **loss/faint** the pet is revived at `max(1, 10% of max HP)` and takes **-15 happiness**. On a **draw** the survivor keeps their remaining HP (no penalty, no coins).
+- Glue: `window.SlimeGame.payBattleCost()` pays stamina+hunger; `grantBattleResult(won, {remainingHp, kind:'wild'|'rival'|'pvp', draw})` grants XP/coins, persists HP, and returns `{leveledUp, coins}`.
+
+### Rivals — async battles vs registered pets (local ghosts)
+A single-player mode to battle **snapshots of other pets stored locally**, piloted by the same AI (`pickAction`) as wild battles — the "battle vs non-live registered players" mode. **No backend**: the roster is pure localStorage.
+- **Store:** `js/rivals.js` persists the roster under `slimepets_rivals_v1` (separate from the pet save key `slimepets.save.v1`). All `JSON.parse` is guarded — corrupt storage resets and re-seeds instead of crashing. Entry shape: `{id, name, snap, source:'qr'|'seed', savedAt, wins, losses}` where `wins/losses` = YOUR record vs that rival. API: `listRivals()`, `saveRival(snap, source)` (dedup by `name`+`genome.seed`; keeps record, refreshes snap), `recordResult(id, playerWon)`, `removeRival(id)`, `ensureSeeded()`.
+- **Seed rivals:** on first run `ensureSeeded()` populates 4 generated rivals (Pixel Lv2, Waffle Lv4, Nimbus Lv6, Biscuit Lv9) via `generateWildOpponent` with **fixed** seeds, so the starter roster is stable and the roster is never empty.
+- **UI (`js/battle-ui.js`):** a **Rivals** button on the battle menu opens a roster screen (per-rival: pet SVG thumbnail, name, `Lv N`, stage, `W-L`, a Battle button, and a 🗑 delete for `source:'qr'` rivals). Selecting one runs the **same battle flow as Wild** (side A = your live pet, side B = the rival's stored snapshot; the rival's `hpCurrent` is honored by the engine).
+- **Rewards:** win = **+20 coins** + XP + HP persisted; loss = revive + -15 happiness. Result uses `grantBattleResult(won, {kind:'rival', ...})`; `recordResult` updates the W-L (draws don't count).
+- **Auto-save QR opponents:** when a QR PvP battle ends, the opponent's snapshot is saved via `saveRival(opponentSnap, 'qr')` and a "‹name› joined your Rivals!" toast is shown, so you can rematch them offline as a ghost.
+
+## Screens (index.html divs, router in main.js shows one at a time)
+`#screen-pet` (main: pet view + care bars + a 4×2 action grid — see v3), `#screen-train` (5 exercises), `#screen-battle`, `#screen-link` (host/join QR), `#screen-menu` (new egg, pet name, reset). Bottom tab bar. Kawaii pastel theme, big rounded buttons, CSS only (no image assets).
+
+## Care & training rules (Agent A) — v2
+- **Care stats 0..100: hunger, happiness, hygiene** (Energy was removed in v2). Decay in real time (and offline catch-up capped at 12h; pet never dies, just gets sad). Ticks every second while open.
+- **Persistent HP (the heart bar).** `pet.hpCurrent` (float), max = the computed `stats.hp`. When max HP grows (level/training), `hpCurrent` grows by the same amount, always clamped to `[1, max]` — the pet **never dies** (floors at 1). Passive healing runs in the 1s tick and the offline catch-up (same 12h cap): **awake +8%/hour, sleeping +32%/hour** of max.
+- **Wounded** = `hpCurrent < 50% of max`: pet screen shows a `🩹 Needs care!` badge and **happiness decays at 3×** its normal (awake) rate.
+- **Coins** (`pet.coins`, int, starts 0) shown in the pet screen top bar as `🪙 N`. Earned only by winning battles (see Rewards).
+- **Heal action** (`🩹 Heal`): heals to full. **A free heal is available once every 4 real hours** (tracked via `pet.lastFreeHealAt` timestamp; works across sessions/offline — v3, replaces the old daily-calendar rule). While on cooldown a heal costs **25 coins**; the button shows the remaining cooldown compactly (e.g. `Heal 1h 47m`). Toast "Not enough coins!" if short, "Already at full health!" if HP is full.
+- **Sleep mode** boosts HP healing (32%/h vs 8%/h) and stamina regen (2×), plus its happiness benefit.
+- Stamina 0..maxStamina, regens ~1 per 30s (2× while sleeping). It is a first-class bar on the pet screen (⚡, yellow) alongside HP (❤️, red/pink); numeric stamina stays on the training screen.
+- **Migration:** old saves (with `care.energy`) load cleanly — energy is dropped, and `hpCurrent = max HP`, `coins = 0`, `lastFreeCureDay = null` are added.
+- **Dev helpers:** `window.DEV.hurt(pct)` sets HP to pct% of max; `window.DEV.coins(n)` sets the coin balance.
+- Training: Lift=str, Run=spd, Swim=hp, Block=def, Focus=crit. Costs 15–25 stamina, small hunger/hygiene cost. Gain = base × affinity[stat] × diminishing(currentStat). If stamina < cost ⇒ refuse ("too tired"). Laziness = chance pet refuses anyway (max ~35% at laziness 1.0, funny message, still costs nothing).
+- Stage progression: egg hatches after ~2 min of app-open time or 5 taps; then age-based (baby→child 1d, →teen 3d, →adult 7d of real time) BUT add a hidden dev accelerator: `window.DEV.grow()` forces next stage.
+- Level: starts 1, from XP (training gives a little, battles more). Base stats at birth from affinity.
+
+## v3 — lifestyle systems (Agent A)
+
+New persistent pet fields (defaults; migrated onto older saves in `deserializePet`, `version` bumped to 3): `weight=30`, `education=20`, `spoiled=0`, `mealsSincePoop=0`, `poopNeedUntil=0`, `poopInRoom=false`, `poopScolded=false`, `lastAchievementAt=0`, `lastMisbehaviorAt=0`, and `lastFreeHealAt=0` (the old `lastFreeCureDay` is dropped).
+
+### Pet-screen layout
+- Top bar: pet name/stage on the left, the **🪙 coins pill on the far right**. The old XP/growth bar was **removed** from the top bar — XP progress now lives only in the info panel.
+- An **ℹ️ info button at the top-right of the pet panel** toggles a slide-in info panel showing: level + XP progress, the 5 battle stats, lifestyle bars (Weight ⚖️, Education 🎓, Spoiled 😤), and species traits (max stamina, laziness). The always-visible stat chips were removed from the main screen.
+- Action area is a **4×2 grid** in this exact order: top row Feed, Clean, Heal, Play; bottom row Potty, Cuddle, Scold, Sleep.
+
+### Feed + Weight
+- Feed opens a **food picker** bottom-sheet. Stage `baby`: only 🍼 Milk. Stage child+: 🍎 Apple, 🍖 Meat, 🍞 Bread, 🍦 Ice cream, 🍰 Cake (no milk).
+- Effects (hunger / weight / happiness): Milk +30/0/+2; Apple +15/-1/0; Meat +35/+1/0; Bread +30/+3/0; Ice cream +12/+3/+8; Cake +15/+4/+12. Ice cream & cake are the "sweet" foods.
+- `pet.weight` 0..100 (start 30). Each training session −1.5 weight (Run −2.5). Slow passive drift toward 30 at ±0.3/h. `renderPet` receives `opts.chubby` (0..1, mapped from weight 30..100) and scales the body subtly wider/squatter.
+- Every food eaten counts as one meal for the poop counter.
+
+### Poop (Potty button)
+- After every **3 meals** (`mealsSincePoop`) the pet needs to potty: an urgent 💩 badge + ~90s countdown appears (`poopNeedUntil`).
+- **Potty during the need** → success: need cleared, +4 happiness, no mess. Countdown **expires** → `poopInRoom=true`: a 💩 renders next to the pet and hygiene decays **3×** until cleaned. **Potty** then cleans it up (+8 hygiene).
+- Education ≥ 60 → 50% chance the pet uses the potty by itself when the need would trigger (cute toast, no countdown).
+
+### Cuddle + Spoiled
+- `pet.spoiled` 0..100 (start 0, decays −1/h). "Achievements" set `pet.lastAchievementAt`: winning any battle, completing a training session, winning at Play.
+- **Cuddle**: within 3 min of an achievement → +15 happiness, no spoil; otherwise +6 happiness and +8 spoiled.
+- Spoiled consequences: (a) feeding a non-sweet food may be **refused** with chance `spoiled/150` (bratty toast, hunger not restored, meal not counted); (b) training refusal chance gains `+spoiled/300`. Education tempers **all** refusal chances by factor `(1 − education/200)`. Any refusal sets `pet.lastMisbehaviorAt`.
+
+### Scold + Education
+- `pet.education` 0..100 (start 20). **Scold is valid** when a poop is currently in the room and not yet scolded (`poopScolded`, one scold/accident), OR a refusal happened in the last 60s (one scold/misbehavior). Valid → +8 education, −10 spoiled, −3 happiness. Invalid → −10 happiness, sad toast.
+
+### Play = Rock-Paper-Scissors
+- Play opens a modal (✊✋✌️); the pet picks randomly (UI-side `Math.random`, never the battle engine). Win: +12 happiness + achievement; tie: +6; lose: +4. Costs 5 stamina (refuses if short).
+
+### Training
+- Each completed session additionally costs **−12 hygiene** ("all sweaty!"), burns weight, and counts as an achievement.
+
+### Tickers & offline
+- The 1s care tick advances the poop countdown, spoiled decay and weight drift. Offline catch-up applies the drifts and, if a potty need was pending, converts it straight into a poop in the room (no live countdown across sessions).
+
+### Dev helpers (v3)
+`window.DEV.meal()` (increment meals + maybe trigger need), `window.DEV.spoil(n)`, `window.DEV.edu(n)`, `window.DEV.weight(n)`.
+
+## Style
+Pastel palette from genome hue (HSL: body `hsl(hue 70% 80%)`, darker outline same hue, accent hue2). Big glossy eyes with white highlights, blush circles, tiny mouth. Idle bounce/squish animation (CSS or SVG transform). Everything cute — think Kirby/slime mascots.
