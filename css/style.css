@@ -704,3 +704,71 @@ body {
 .move-name { flex: 1; font-size: 14px; font-weight: 800; color: var(--ink); }
 .move-pw { font-size: 12px; font-weight: 800; color: var(--pink-d); }
 .move-hint { font-size: 11px; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+
+/* ---------------- v5: sleep night overlay (§5) ---------------- */
+.night-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 10px 12px;
+  font-size: 28px;
+  background: rgba(30, 40, 90, 0.45);
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+.pet-stage.night .night-overlay { display: flex; }
+
+/* ---------------- v5: fly (dirty overlay, §5) ---------------- */
+.sp-fly {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: flybuzz 2.2s ease-in-out infinite;
+}
+@keyframes flybuzz {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-6px, 4px); }
+  50% { transform: translate(4px, -3px); }
+  75% { transform: translate(-3px, -5px); }
+}
+
+/* ---------------- v5: food price (feed picker, §2) ---------------- */
+.food-item .f-price {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+/* ---------------- v5: Shop screen (§6) ---------------- */
+.shop-body { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.shop-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border-radius: 18px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.shop-ico { font-size: 28px; width: 34px; text-align: center; }
+.shop-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.shop-name { font-size: 16px; font-weight: 800; color: var(--ink); }
+.shop-desc { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.shop-buy {
+  border: none;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(90deg, var(--pink), var(--lav));
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s ease;
+}
+.shop-buy:active { transform: scale(0.94); }
+.big-btn.disabled, .big-btn:disabled { opacity: 0.5; filter: grayscale(0.4); cursor: default; }

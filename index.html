@@ -26,6 +26,7 @@
       <div id="death-overlay" class="death-overlay" style="display:none">
         <p id="death-text" class="death-text">has passed away… tap to send it to the sky 🕊️</p>
       </div>
+      <div id="night-overlay" class="night-overlay" aria-hidden="true">🌙</div>
     </div>
 
     <div id="care-ui" class="care-ui">
@@ -126,6 +127,7 @@
         <input id="menu-name" type="text" maxlength="14" placeholder="Slime" />
       </label>
       <button id="btn-rename" class="big-btn" data-i18n="menu.rename">Rename Pet</button>
+      <button id="btn-shop" class="big-btn accent" data-i18n="menu.shop">🛒 Shop</button>
       <button id="btn-new-egg" class="big-btn accent" data-i18n="menu.newEgg">Hatch a New Egg 🥚</button>
       <button id="btn-reset" class="big-btn danger" data-i18n="menu.reset">Reset Everything</button>
       <p class="hint" data-i18n="menu.hint">A new egg is procedurally generated from a random seed — every slime is unique!</p>
@@ -138,6 +140,34 @@
           <button class="lang-btn" data-lang="en">🇬🇧 English</button>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== SHOP SCREEN ===================== -->
+  <section id="screen-shop" class="screen">
+    <header class="topbar">
+      <div class="title"><span class="pet-name" data-i18n="shop.title">Shop</span><span class="pet-sub" data-i18n="shop.subtitle">Spend your coins</span></div>
+      <span id="shop-coins" class="coins">🪙 0</span>
+    </header>
+    <div class="shop-body">
+      <div class="shop-card">
+        <span class="shop-ico">❤️</span>
+        <div class="shop-info"><span class="shop-name" data-i18n="shop.curePotion">Cure Potion</span><span class="shop-desc" data-i18n="shop.curePotionDesc">Fully restores HP</span></div>
+        <button id="btn-buy-cure" class="shop-buy">🪙 50</button>
+      </div>
+      <div class="shop-card">
+        <span class="shop-ico">⚡</span>
+        <div class="shop-info"><span class="shop-name" data-i18n="shop.staminaPotion">Stamina Potion</span><span class="shop-desc" data-i18n="shop.staminaPotionDesc">Fully restores stamina</span></div>
+        <button id="btn-buy-stamina" class="shop-buy">🪙 50</button>
+      </div>
+      <div class="shop-card">
+        <span class="shop-ico">🎲</span>
+        <div class="shop-info"><span class="shop-name" data-i18n="shop.reroll">Ability Reroll</span><span class="shop-desc" data-i18n="shop.rerollDesc">Reroll one learned move</span></div>
+        <button id="btn-buy-reroll" class="shop-buy">🪙 200</button>
+      </div>
+      <button id="btn-notify" class="big-btn" data-i18n="notif.enable">🔔 Enable notifications</button>
+      <p class="hint" data-i18n="notif.hint">Reminders only work while SlimePets is open in a tab.</p>
+      <button id="btn-shop-back" class="big-btn" data-i18n="shop.back">⬅ Back</button>
     </div>
   </section>
 
@@ -174,6 +204,14 @@
         <button class="rps-btn" data-rps="paper">✋</button>
         <button class="rps-btn" data-rps="scissors">✌️</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===================== ABILITY REROLL PICKER ===================== -->
+  <div id="reroll-sheet" class="sheet-overlay">
+    <div class="sheet">
+      <div class="sheet-head"><span data-i18n="shop.rerollPick">🎲 Pick a move to reroll</span><button id="reroll-close" class="info-close" aria-label="close">✕</button></div>
+      <div id="reroll-grid" class="food-grid"></div>
     </div>
   </div>
 </div>

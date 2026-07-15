@@ -1,4 +1,4 @@
-# SlimePets — Spec (v3)
+# SlimePets — Spec (v5)
 
 Mobile-first HTML5 tamagotchi with procedurally-generated kawaii slime pets, life stages, training, and turn-based battles (vs AI now; PvP via QR/WebRTC).
 
@@ -155,6 +155,54 @@ New persistent pet fields (defaults; migrated onto older saves in `deserializePe
 
 ### Dev helpers (v3)
 `window.DEV.meal()` (increment meals + maybe trigger need), `window.DEV.spoil(n)`, `window.DEV.edu(n)`, `window.DEV.weight(n)`.
+
+## v5 — economy, shop, feedback, notifications (Agent A)
+
+Serialization `version` bumped to **5**; `deserializePet` migrates all new fields cleanly onto older saves. New persistent pet fields: `lastEggAt=0`, `sameFoodStreak=0`, `lastFoodId=null`, `moveOverrides={}`.
+
+### Coins / start (§1)
+- A **fresh pet / new egg starts with 400 coins** (`createPet` sets `coins:400`). Rebirth after death still carries the current coins forward. **Migration leaves existing saved coins as-is** — a pre-economy save with no coins field defaults to 0 (it is NOT a brand-new pet, so it gets no 400 bonus).
+
+### Food economy (§2)
+Foods now **cost coins**, restore **less hunger**, and top up a little **HP + stamina** (clamped to max). If `coins < cost` ⇒ toast `shop.notEnough` and no feed. The Feed picker shows each food's price.
+
+| id | cost | hunger | hp | stamina | weight | happy |
+|---|---|---|---|---|---|---|
+| milk (baby only) | 5 | +18 | +3 | +4 | 0 | 0 |
+| apple | 5 | +10 | +2 | +3 | -1 | 0 |
+| bread | 12 | +18 | +3 | +5 | +3 | 0 |
+| ice cream | 12 | +8 | +2 | +3 | +3 | +8 |
+| cake | 15 | +10 | +3 | +4 | +4 | +12 |
+| meat | 20 | +22 | +6 | +8 | +1 | 0 |
+
+Ice cream & cake add happiness. Feeding the **same food 3× in a row** (`sameFoodStreak≥3`, tracked with `lastFoodId`) applies **−8 happiness** and toasts `toast.boredFood`. A different food resets the streak to 1. Every feed still counts as a meal and resets the starvation clock.
+
+### Ability unlocks (§3)
+Fixed per-slot conditions (only conditions changed vs v4; move names/elements/powers are unchanged): slot0 **Attack** always; slot1 elemental **level 2**; slot2 (3rd) **win 10 battles** (`{type:'wins',value:10}`); slot3 (4th) **level 3** (`{type:'level',value:3}`).
+
+### Clean / dirtiness / sadness (§4)
+- **Clean (🫧) = partial bath:** hygiene **+75 (capped at 100)**, happiness **−8** (pets dislike baths). It does **NOT** clear poop — that stays the **Potty** button's job.
+- **Dirty** (`hygiene < 35`): happiness decays **~1.6× faster** and the pet's mood is forced to **sad**.
+- **Sad mood** (`happiness < 30` OR dirty OR starving) draws a downturned mouth regardless of the genome mouth.
+- **Dirty visual:** `renderPet` overlays brown smudge dots (clipped to the body) + a small buzzing fly (`opts.dirty`).
+
+### Sleep visual (§5)
+While `pet.sleeping`, `#pet-stage` gets a `.night` class → a semi-transparent dark-blue layer (`rgba(30,40,90,0.45)`) + 🌙 over the stage, removed on wake.
+
+### Shop (§6)
+New **Shop** screen (`#screen-shop`), reached via the **🛒 Shop** button in the Menu. Shows current coins; each buy deducts coins (toast `shop.notEnough` if short):
+- **Cure Potion — 50** → full HP (no cooldown).
+- **Stamina Potion — 50** → full stamina.
+- **Ability Reroll — 200** → opens a picker of currently-learned moves (Attack excluded, so Attack is always kept); the chosen slot is rerolled to a new random move (name/element/power) stored in `pet.moveOverrides[slotId]`. `getLearnset`/`battleSnapshot` apply the override so battle uses the new move; `pet.moves` ids are untouched.
+
+### New-egg cooldown (§7)
+The Menu "Hatch a New Egg" action is limited to **once every 4 real hours** (`pet.lastEggAt`, persisted). While cooling down the button is disabled and shows `menu.eggCooldown` ("New egg in {time}"). **Death→rebirth is exempt** (rebirth never stamps `lastEggAt`).
+
+### Notifications (§8)
+Web Notifications API, best-effort while the page is alive (open/backgrounded). An "Enable notifications" button in the Shop calls `Notification.requestPermission()`. When granted, a debounced `new Notification(...)` fires **once per state entry** (reset when the condition clears) for: needs-to-poop, starving, very hungry (`hunger<15`), low HP (`<25%` of max), dirty (`hygiene<35`). **Limitation (documented in code):** true push with the app fully closed needs an installed PWA + service worker + push backend — out of scope for v5.
+
+### i18n (§9/§10)
+All new user-facing strings (shop, potions, ability reroll, notifications, egg cooldown, bored-of-food toast, enable-notifications) added to EN + IT + JA. Move proper-names stay English.
 
 ## Style
 Pastel palette from genome hue (HSL: body `hsl(hue 70% 80%)`, darker outline same hue, accent hue2). Big glossy eyes with white highlights, blush circles, tiny mouth. Idle bounce/squish animation (CSS or SVG transform). Everything cute — think Kirby/slime mascots.

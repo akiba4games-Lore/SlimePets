@@ -237,10 +237,17 @@ export function getLearnset(pet) {
   // Separate RNG stream from genome so learnsets don't perturb appearance.
   const rng = mulberry32((seed ^ 0x5bd1e995) >>> 0);
 
-  // Two DISTINCT milestones for slots 2 and 3.
-  const i2 = Math.floor(rng() * MILESTONES.length) % MILESTONES.length;
-  let i3 = Math.floor(rng() * MILESTONES.length) % MILESTONES.length;
-  if (i3 === i2) i3 = (i3 + 1) % MILESTONES.length;
+  // v5 (§3): the milestone rng draws are still CONSUMED (two draws) so every
+  // move's name/element/power stays byte-identical to v4 for existing seeds —
+  // only the fixed unlock CONDITIONS below change. The drawn indices are unused.
+  Math.floor(rng() * MILESTONES.length);
+  Math.floor(rng() * MILESTONES.length);
+
+  // v5 fixed unlock conditions (§3):
+  //   slot0 Attack — always; slot1 — level 2 (unchanged);
+  //   slot2 (3rd) — win 10 battles; slot3 (4th) — level 3.
+  const UNLOCK_SLOT2 = { type: 'wins', value: 10 };
+  const UNLOCK_SLOT3 = { type: 'level', value: 3 };
 
   const list = [];
   // slot 0 — universal Attack (always known).
@@ -250,20 +257,54 @@ export function getLearnset(pet) {
     // No-element pets get higher-power non-elemental moves so they still bite.
     const pool = MOVE_POOLS.none;
     list.push(makeAbility('m1', pool[0], 'none', 1.15 + rng() * 0.1, { type: 'level', value: 2 }));
-    list.push(makeAbility('m2', pool[pool.length - 1], 'none', 1.35 + rng() * 0.1, { ...MILESTONES[i2] }));
+    list.push(makeAbility('m2', pool[pool.length - 1], 'none', 1.35 + rng() * 0.1, { ...UNLOCK_SLOT2 }));
   } else {
     const pool = MOVE_POOLS[el];
     list.push(makeAbility('m1', pool[0], el, 1.05 + rng() * 0.1, { type: 'level', value: 2 }));
-    list.push(makeAbility('m2', pool[pool.length - 1], el, 1.25 + rng() * 0.1, { ...MILESTONES[i2] }));
+    list.push(makeAbility('m2', pool[pool.length - 1], el, 1.25 + rng() * 0.1, { ...UNLOCK_SLOT2 }));
   }
 
-  // slot 3 — a move of a random element (or none), unlocked by the OTHER milestone.
+  // slot 3 — a move of a random element (or none), unlocked at level 3.
   const el3 = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
   const pool3 = MOVE_POOLS[el3];
   const name3 = pool3[Math.floor(rng() * pool3.length) % pool3.length];
-  list.push(makeAbility('m3', name3, el3, 1.15 + rng() * 0.1, { ...MILESTONES[i3] }));
+  list.push(makeAbility('m3', name3, el3, 1.15 + rng() * 0.1, { ...UNLOCK_SLOT3 }));
+
+  // v5 (§6): apply any ability-reroll overrides (name/element/power only; the
+  // slot id, kind and unlock condition are never overridden).
+  const ov = pet && pet.moveOverrides;
+  if (ov && typeof ov === 'object') {
+    for (const ab of list) {
+      const o = ov[ab.id];
+      if (!o) continue;
+      if (o.name) ab.name = o.name;
+      if (ELEMENTS.indexOf(o.element) >= 0) ab.element = o.element;
+      if (typeof o.power === 'number' && isFinite(o.power)) ab.power = round2(o.power);
+    }
+  }
 
   return list;
+}
+
+// ---------------------------------------------------------------------------
+// rerollMove(pet, slotId) — v5 (§6) ability reroll. Rerolls a single learned
+// slot to a brand-new random move (name/element/power) via a fresh seed and
+// stores it in pet.moveOverrides so battleSnapshot / getLearnset pick it up.
+// The 'attack' slot is protected (never rerolled) so the pet always keeps
+// Attack. Returns the updated ability object, or null if the slot is invalid.
+// ---------------------------------------------------------------------------
+export function rerollMove(pet, slotId) {
+  if (!pet || slotId === 'attack') return null;
+  if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') pet.moveOverrides = {};
+  // Only reroll a slot that actually exists in this pet's learnset.
+  if (!getLearnset(pet).some((a) => a.id === slotId)) return null;
+  const rng = mulberry32(randomSeed());
+  const el = ELEMENTS[Math.floor(rng() * ELEMENTS.length) % ELEMENTS.length];
+  const pool = MOVE_POOLS[el] || MOVE_POOLS.none;
+  const name = pool[Math.floor(rng() * pool.length) % pool.length];
+  const power = round2(1.1 + rng() * 0.35);
+  pet.moveOverrides[slotId] = { name, element: el, power };
+  return getLearnset(pet).find((a) => a.id === slotId) || null;
 }
 
 function unlockMet(unlock, pet) {
@@ -304,7 +345,7 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 4,
+    version: 5,
     name: (name && String(name).trim()) || 'Slime',
     genome,
     stage: 'egg',
@@ -318,8 +359,9 @@ export function createPet(name, seed) {
     // v2: energy removed from care; HP is now a persistent bar (hpCurrent).
     care: { hunger: 80, happiness: 80, hygiene: 80 },
     hpCurrent: 0, // set to max HP just below (needs the full pet for computeStats)
-    coins: 0,
+    coins: 400, // v5: a fresh pet / new egg starts with 400 coins (§1)
     lastFreeHealAt: 0, // timestamp of the last free heal (4h cooldown)
+    lastEggAt: 0, // v5: timestamp of the last MANUAL "Hatch a New Egg" (4h cooldown §7)
     level: 1,
     xp: 0,
     stamina: genome.maxStamina,
@@ -337,8 +379,12 @@ export function createPet(name, seed) {
     lastMisbehaviorAt: 0, // timestamp of last refusal (feeds Scold)
     // v4 combat & lifecycle -------------------------------------------------
     moves: ['attack'], // unlocked ability ids (see getLearnset / checkUnlocks)
+    moveOverrides: {}, // v5: per-slot ability reroll overrides {id:{name,element,power}} (§6 shop)
     trainingsDone: 0, // completed training sessions (feeds 'trainings' unlocks)
     battleWins: 0, // battles won (feeds 'wins' unlocks)
+    // v5: food-boredom tracking (§2) — 3× the same food in a row hits happiness.
+    sameFoodStreak: 0,
+    lastFoodId: null,
     state: 'alive', // 'alive' | 'dead' (death via starvation only)
     lastFedAt: now, // ms of last feed; starvation starts 2h after this
   };
@@ -502,7 +548,7 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 4;
+  pet.version = 5;
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -516,9 +562,14 @@ export function deserializePet(obj) {
   if (typeof pet.eggOpenMs !== 'number') pet.eggOpenMs = 0;
   if (typeof pet.eggTaps !== 'number') pet.eggTaps = 0;
   pet.sleeping = !!pet.sleeping;
-  // v2 economy fields (defaults for pre-v2 saves).
-  if (typeof pet.coins !== 'number' || !isFinite(pet.coins) || pet.coins < 0) pet.coins = 0;
-  pet.coins = Math.floor(pet.coins);
+  // Coins: keep whatever a save stored (v2+). Pre-economy saves with no coins
+  // field are EXISTING pets, not brand-new ones, so they do NOT get the v5
+  // fresh-pet 400 bonus — they default to 0 (§1 migration: leave saves as-is).
+  if (typeof obj.coins === 'number' && isFinite(obj.coins) && obj.coins >= 0) {
+    pet.coins = Math.floor(obj.coins);
+  } else {
+    pet.coins = 0;
+  }
   // v3 heal cooldown: drop the old daily-cure key, use a 4h timestamp instead.
   delete pet.lastFreeCureDay;
   if (typeof pet.lastFreeHealAt !== 'number' || !isFinite(pet.lastFreeHealAt)) pet.lastFreeHealAt = 0;
@@ -541,6 +592,11 @@ export function deserializePet(obj) {
   pet.battleWins = Math.max(0, Math.floor(num(pet.battleWins, 0)));
   pet.state = pet.state === 'dead' ? 'dead' : 'alive';
   pet.lastFedAt = num(pet.lastFedAt, now);
+  // v5 fields (defaults for pre-v5 saves).
+  pet.lastEggAt = num(pet.lastEggAt, 0);
+  pet.sameFoodStreak = Math.max(0, Math.floor(num(pet.sameFoodStreak, 0)));
+  pet.lastFoodId = typeof pet.lastFoodId === 'string' ? pet.lastFoodId : null;
+  if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') pet.moveOverrides = {};
   // Moves: keep only ids that still exist in this pet's learnset; always know Attack.
   const validIds = new Set(getLearnset(pet).map((a) => a.id));
   const stored = Array.isArray(obj.moves) ? obj.moves : ['attack'];

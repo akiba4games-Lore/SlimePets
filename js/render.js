@@ -352,6 +352,40 @@ function pattern(style, L, pal, clipId) {
 }
 
 // ---------------------------------------------------------------------------
+// Dirty marks (DESIGN v5 §5): a few brown smudge dots clipped to the body plus
+// a little buzzing fly near the pet. Subtle, still kawaii. Shown when the pet
+// is dirty (hygiene < 35 — the caller passes opts.dirty).
+// ---------------------------------------------------------------------------
+function dirtyMarks(L, clipId) {
+  const { cx, cy, w, h } = L;
+  const c = 'hsl(28 38% 38%)';
+  const dots = [
+    [cx - w * 0.46, cy + h * 0.18, 5.0, 3.4],
+    [cx + w * 0.42, cy + h * 0.34, 4.2, 2.8],
+    [cx - w * 0.08, cy + h * 0.56, 3.6, 2.6],
+    [cx + w * 0.16, cy - h * 0.22, 3.0, 2.2],
+  ];
+  return (
+    `<g clip-path="url(#${clipId})" opacity="0.5">` +
+    dots.map((d) => `<ellipse cx="${d[0]}" cy="${d[1]}" rx="${d[2]}" ry="${d[3]}" fill="${c}"/>`).join('') +
+    `</g>`
+  );
+}
+
+function dirtyFly(L) {
+  const { cx, cy, w, h } = L;
+  const fx = cx + w * 0.92;
+  const fy = cy - h * 0.62;
+  return (
+    `<g class="sp-fly"><g transform="translate(${fx} ${fy})">` +
+    `<ellipse cx="-3.2" cy="-2.4" rx="3.2" ry="1.9" fill="#ffffff" opacity="0.75" stroke="hsl(0 0% 55%)" stroke-width="0.5"/>` +
+    `<ellipse cx="3.2" cy="-2.4" rx="3.2" ry="1.9" fill="#ffffff" opacity="0.75" stroke="hsl(0 0% 55%)" stroke-width="0.5"/>` +
+    `<ellipse cx="0" cy="0" rx="2.6" ry="2.0" fill="hsl(0 0% 22%)"/>` +
+    `</g></g>`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Egg rendering (patterned by hue).
 // ---------------------------------------------------------------------------
 function renderEgg(g, opts) {
@@ -555,6 +589,11 @@ export function renderPet(svgEl, genome, stage, opts) {
       ? `<g fill="${pal.outline}" opacity="0.8" font-family="sans-serif" font-weight="700"><text x="${L.cx + L.w * 0.7}" y="${L.cy - L.h * 0.7}" font-size="14">z</text><text x="${L.cx + L.w * 0.95}" y="${L.cy - L.h}" font-size="18">Z</text></g>`
       : '';
 
+  // Dirty overlay (§5): smudges ride with the body (clipped, inside the squish
+  // group); the fly buzzes independently outside it (like the sleep Zzz).
+  const smudges = opts.dirty ? dirtyMarks(L, clipId) : '';
+  const fly = opts.dirty ? dirtyFly(L) : '';
+
   const defs = `<defs><clipPath id="${clipId}"><path d="${bodyD}"/></clipPath></defs>`;
   const animClass = opts.animate === false ? '' : ' class="sp-squish"';
 
@@ -568,8 +607,10 @@ export function renderPet(svgEl, genome, stage, opts) {
     pat +
     gloss +
     face +
+    smudges +
     `</g>` +
-    zzz;
+    zzz +
+    fly;
 }
 
 function pet_isTired(opts) {

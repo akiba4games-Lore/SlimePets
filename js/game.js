@@ -11,6 +11,7 @@ import {
   randomSeed,
   getLearnset,
   checkUnlocks,
+  rerollMove,
   rebirth,
   ELEMENTS,
   STAGE_DURATION_MS,
@@ -56,19 +57,36 @@ const EXERCISES = {
 // Training-refusal flavor lines live in i18n as lazy.0 … lazy.(N-1).
 const LAZY_LINE_COUNT = 6;
 
-// v3 — Food picker. Effects: hunger restore / weight delta / happiness delta.
+// v5 — Food economy (§2). Foods now COST coins, give LESS hunger and restore a
+// little HP + stamina (clamped to max); sweets add happiness. Effects:
+// cost (coins) / hunger / hp / stamina / weight / happy.
 // Display names are localized via t('food.<key>'); `key` is the i18n suffix.
 const FOODS = {
-  milk: { emoji: '🍼', hunger: 30, weight: 0, happy: 2, sweet: false },
-  apple: { emoji: '🍎', hunger: 15, weight: -1, happy: 0, sweet: false },
-  meat: { emoji: '🍖', hunger: 35, weight: 1, happy: 0, sweet: false },
-  bread: { emoji: '🍞', hunger: 30, weight: 3, happy: 0, sweet: false },
-  icecream: { emoji: '🍦', hunger: 12, weight: 3, happy: 8, sweet: true },
-  cake: { emoji: '🍰', hunger: 15, weight: 4, happy: 12, sweet: true },
+  milk: { emoji: '🍼', cost: 5, hunger: 18, hp: 3, stamina: 4, weight: 0, happy: 0, sweet: false },
+  apple: { emoji: '🍎', cost: 5, hunger: 10, hp: 2, stamina: 3, weight: -1, happy: 0, sweet: false },
+  bread: { emoji: '🍞', cost: 12, hunger: 18, hp: 3, stamina: 5, weight: 3, happy: 0, sweet: false },
+  icecream: { emoji: '🍦', cost: 12, hunger: 8, hp: 2, stamina: 3, weight: 3, happy: 8, sweet: true },
+  cake: { emoji: '🍰', cost: 15, hunger: 10, hp: 3, stamina: 4, weight: 4, happy: 12, sweet: true },
+  meat: { emoji: '🍖', cost: 20, hunger: 22, hp: 6, stamina: 8, weight: 1, happy: 0, sweet: false },
 };
 const FOODS_BABY = ['milk'];
-const FOODS_CHILD = ['apple', 'meat', 'bread', 'icecream', 'cake'];
+const FOODS_CHILD = ['apple', 'bread', 'icecream', 'cake', 'meat'];
 function foodName(key) { return t('food.' + key); }
+
+// v5 — same food 3× in a row bores the pet (§2).
+const FOOD_BORED_STREAK = 3;
+const FOOD_BORED_HAPPY = 8; // happiness lost when bored
+
+// v5 — dirty (§4): hygiene < DIRTY_THRESHOLD makes the pet sad + decays
+// happiness DIRTY_DECAY_MULT× faster.
+const DIRTY_THRESHOLD = 35;
+const DIRTY_DECAY_MULT = 1.6;
+
+// v5 — shop prices (§6) and new-egg cooldown (§7).
+const CURE_COST = 50;
+const STAMINA_POTION_COST = 50;
+const REROLL_COST = 200;
+const EGG_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 real hours between manual hatches
 
 // Spoiled food-refusal flavor lines live in i18n as brat.0 … brat.(N-1).
 const BRAT_LINE_COUNT = 3;
@@ -241,6 +259,8 @@ export function showScreen(name) {
   });
   if (name === 'pet') refresh();
   if (name === 'train') refreshTrain();
+  if (name === 'menu') refreshMenu();
+  if (name === 'shop') refreshShop();
 }
 
 // ---------------------------------------------------------------------------
@@ -258,13 +278,15 @@ function applyDecay(pet, dtSec) {
   const starving = pet.stage !== 'egg' && Date.now() - (pet.lastFedAt || 0) > STARVE_GRACE_MS;
   // A poop on the floor makes hygiene decay 3× faster.
   const hygMult = pet.poopInRoom ? 3 : 1;
+  // v5 (§4): a dirty pet (hygiene < 35) loses happiness ~1.6× faster.
+  const dirtyMult = c.hygiene < DIRTY_THRESHOLD ? DIRTY_DECAY_MULT : 1;
   if (pet.sleeping) {
     c.hunger -= DECAY_SLEEP.hunger * dtH;
     c.hygiene -= DECAY_SLEEP.hygiene * dtH * hygMult;
     c.happiness += DECAY_SLEEP.happiness * dtH;
   } else {
     c.hunger -= DECAY_AWAKE.hunger * dtH;
-    c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1);
+    c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1) * dirtyMult;
     c.hygiene -= DECAY_AWAKE.hygiene * dtH * hygMult;
   }
   // neglect drags happiness down
@@ -340,8 +362,10 @@ export function tick(dtSec) {
     return;
   }
   checkStageProgress(pet, dtSec);
+  updateNotifications(pet); // §8: fire debounced notifications (best-effort)
   if (state.screen === 'pet') refreshBars();
   if (state.screen === 'train') refreshTrain();
+  if (state.screen === 'menu') refreshMenu(); // live egg-cooldown countdown
   // periodic autosave (mutations also save explicitly)
   saveThrottle += dtSec;
   if (saveThrottle >= 8) {
@@ -433,7 +457,7 @@ export function openFoodPicker() {
     grid.innerHTML = keys
       .map((k) => {
         const fd = FOODS[k];
-        return `<button class="food-item" data-food="${k}"><span class="f-ico">${fd.emoji}</span><span class="f-name">${foodName(k)}</span></button>`;
+        return `<button class="food-item" data-food="${k}"><span class="f-ico">${fd.emoji}</span><span class="f-name">${foodName(k)}</span><span class="f-price">🪙 ${fd.cost}</span></button>`;
       })
       .join('');
     grid.querySelectorAll('.food-item').forEach((btn) => {
@@ -449,6 +473,12 @@ export function doFeedFood(key) {
   const fd = FOODS[key];
   if (!fd) return;
   const c = pet.care;
+  // v5 (§2): foods cost coins. If short, toast and DON'T feed (sheet stays open
+  // so the player can pick something cheaper).
+  if ((pet.coins || 0) < fd.cost) {
+    toast(t('shop.notEnough'));
+    return;
+  }
   // Spoiled pets may refuse non-sweet food; education tempers the tantrum.
   if (!fd.sweet) {
     const chance = (pet.spoiled / 150) * (1 - pet.education / 200);
@@ -459,18 +489,31 @@ export function doFeedFood(key) {
       reaction('💢');
       closeSheet('food-sheet');
       save();
-      return; // hunger not restored, meal not counted
+      return; // coins NOT spent, hunger not restored, meal not counted
     }
   }
+  // Pay for the food.
+  pet.coins = Math.max(0, (pet.coins || 0) - fd.cost);
+  // Reduced hunger restore + a little HP and stamina back (clamped to max).
+  const maxHp = computeStats(pet).hp;
   c.hunger = clamp(c.hunger + fd.hunger, 0, 100);
   c.happiness = clamp(c.happiness + fd.happy, 0, 100);
   pet.weight = clamp(pet.weight + fd.weight, 0, 100);
+  pet.hpCurrent = clamp((pet.hpCurrent || 0) + fd.hp, 1, maxHp);
+  pet.stamina = clamp(pet.stamina + fd.stamina, 0, pet.genome.maxStamina);
+  // Same-food boredom streak (§2): same id increments, a different id resets.
+  if (pet.lastFoodId === key) pet.sameFoodStreak = (pet.sameFoodStreak || 0) + 1;
+  else pet.sameFoodStreak = 1;
+  pet.lastFoodId = key;
+  const bored = pet.sameFoodStreak >= FOOD_BORED_STREAK;
+  if (bored) c.happiness = clamp(c.happiness - FOOD_BORED_HAPPY, 0, 100);
   pet.mealsSincePoop = (pet.mealsSincePoop || 0) + 1;
   pet.lastFedAt = Date.now(); // any feed resets the starvation clock (§6)
-  reaction(fd.emoji);
+  reaction(bored ? '😒' : fd.emoji);
   bouncePet();
   closeSheet('food-sheet');
-  toast(t('toast.enjoyedFood', { name: pet.name, food: foodName(key).toLowerCase() }));
+  if (bored) toast(t('toast.boredFood', { name: pet.name, food: foodName(key).toLowerCase() }));
+  else toast(t('toast.enjoyedFood', { name: pet.name, food: foodName(key).toLowerCase() }));
   maybeTriggerPoopNeed(pet);
   checkLearning(); // weight may have crossed a milestone
   afterAction('yum!');
@@ -550,14 +593,17 @@ export function doScold() {
   afterAction('scold');
 }
 
+// Clean (🫧) — v5 (§4, updated): a PARTIAL bath. Raises hygiene by +75 (capped
+// at 100) but does NOT clear poop (that stays the Potty button's job), and pets
+// dislike baths so happiness drops by 8.
 export function doClean() {
   if (!requirePet()) return;
   const c = state.pet.care;
-  c.hygiene = clamp(c.hygiene + 45, 0, 100);
-  c.happiness = clamp(c.happiness + 6, 0, 100);
+  c.hygiene = clamp(c.hygiene + 75, 0, 100);
+  c.happiness = clamp(c.happiness - 8, 0, 100);
   reaction('🫧');
   bouncePet();
-  afterAction('squeaky clean!');
+  afterAction('bath time!');
 }
 
 export function doSleep() {
@@ -841,7 +887,11 @@ function renderPetCustom(extra) {
   const pet = state.pet;
   const svg = $('pet-svg');
   if (!pet || !svg) return;
-  const mood = pet.sleeping ? 'sleepy' : pet.care.happiness < 30 ? 'sad' : 'idle';
+  // v5 (§4/§5): dirty (hygiene<35) or starving forces a sad mood (sad mouth),
+  // and dirty also shows the smudge/fly overlay.
+  const dirty = pet.stage !== 'egg' && pet.state !== 'dead' && pet.care.hygiene < DIRTY_THRESHOLD;
+  const sad = pet.care.happiness < 30 || dirty || isStarving(pet);
+  const mood = pet.sleeping ? 'sleepy' : sad ? 'sad' : 'idle';
   // Chubbiness: map weight 30..100 -> 0..1 so a heavier pet looks squatter.
   const chubby = clamp((pet.weight - 30) / 70, 0, 1);
   const opts = {
@@ -851,6 +901,7 @@ function renderPetCustom(extra) {
     eggTaps: pet.eggTaps,
     chubby,
     element: pet.genome.element,
+    dirty,
     dead: pet.state === 'dead',
   };
   if (extra) Object.assign(opts, extra);
@@ -944,6 +995,14 @@ export function refresh() {
   const coinsEl = $('pet-coins');
   if (coinsEl) coinsEl.textContent = `🪙 ${pet.coins || 0}`;
 
+  // v5 (§5): dark-blue night overlay over the stage while sleeping.
+  const stageWrap = $('pet-stage');
+  if (stageWrap) stageWrap.classList.toggle('night', !!pet.sleeping && pet.stage !== 'egg' && !dead);
+
+  // keep the shop / menu labels fresh if either is on screen
+  if (state.screen === 'shop') refreshShop();
+  if (state.screen === 'menu') refreshMenu();
+
   // wounded status badge (HP < 50% of max)
   const statusEl = $('pet-status');
   const woundedNow = pet.stage !== 'egg' && pet.hpCurrent < stats.hp * 0.5;
@@ -1017,6 +1076,9 @@ function tapEgg() {
 // ---------------------------------------------------------------------------
 export function newEgg(name, seed) {
   state.pet = createPet(name, seed != null ? seed >>> 0 : randomSeed());
+  // §7: a MANUAL hatch starts the 4h cooldown for the next one. (rebirth after
+  // death does NOT go through here, so it is never blocked.)
+  state.pet.lastEggAt = Date.now();
   save();
   showScreen('pet');
   refresh();
@@ -1101,6 +1163,185 @@ function grantBattleResult(won, info) {
 }
 
 // ---------------------------------------------------------------------------
+// v5 — New-egg cooldown (§7)
+// ---------------------------------------------------------------------------
+// Milliseconds until the Menu "Hatch a New Egg" action is allowed again
+// (0 = allowed now). Based on the current pet's lastEggAt, which is stamped
+// only when a MANUAL hatch happens. Death→rebirth never stamps it (exempt).
+function eggCooldownRemaining() {
+  const pet = state.pet;
+  if (!pet) return 0;
+  const last = typeof pet.lastEggAt === 'number' ? pet.lastEggAt : 0;
+  return Math.max(0, last + EGG_COOLDOWN_MS - Date.now());
+}
+
+// Refresh the Menu screen's new-egg button (disabled + remaining time on cooldown).
+function refreshMenu() {
+  const btn = $('btn-new-egg');
+  if (!btn) return;
+  const remain = eggCooldownRemaining();
+  if (remain > 0) {
+    btn.disabled = true;
+    btn.classList.add('disabled');
+    btn.textContent = t('menu.eggCooldown', { time: fmtDuration(remain) });
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('disabled');
+    btn.textContent = t('menu.newEgg');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v5 — Shop (§6)
+// ---------------------------------------------------------------------------
+function refreshShop() {
+  const pet = state.pet;
+  const c = $('shop-coins');
+  if (c) c.textContent = `🪙 ${(pet && pet.coins) || 0}`;
+  updateNotifyButton();
+}
+
+// Cure Potion — fully restores HP (no cooldown, unlike the free Heal).
+function doBuyCure() {
+  const pet = state.pet;
+  if (!pet) return;
+  if ((pet.coins || 0) < CURE_COST) { toast(t('shop.notEnough')); return; }
+  const maxHp = computeStats(pet).hp;
+  if (pet.hpCurrent >= maxHp) { toast(t('toast.fullHealth')); return; }
+  pet.coins -= CURE_COST;
+  pet.hpCurrent = maxHp;
+  reaction('❤️');
+  toast(t('shop.boughtCure', { name: pet.name }));
+  refreshShop();
+  refresh();
+  save();
+}
+
+// Stamina Potion — fully restores stamina.
+function doBuyStamina() {
+  const pet = state.pet;
+  if (!pet) return;
+  if ((pet.coins || 0) < STAMINA_POTION_COST) { toast(t('shop.notEnough')); return; }
+  if (pet.stamina >= pet.genome.maxStamina) { toast(t('shop.staminaFull', { name: pet.name })); return; }
+  pet.coins -= STAMINA_POTION_COST;
+  pet.stamina = pet.genome.maxStamina;
+  reaction('⚡');
+  toast(t('shop.boughtStamina', { name: pet.name }));
+  refreshShop();
+  refresh();
+  save();
+}
+
+// Ability Reroll — open a picker of the pet's currently-learned moves (excluding
+// the protected Attack slot). Charges only once a slot is actually chosen.
+function openRerollPicker() {
+  const pet = state.pet;
+  if (!pet) return;
+  if ((pet.coins || 0) < REROLL_COST) { toast(t('shop.notEnough')); return; }
+  const known = new Set(Array.isArray(pet.moves) ? pet.moves : ['attack']);
+  const rerollable = getLearnset(pet).filter((a) => a.id !== 'attack' && known.has(a.id));
+  if (rerollable.length === 0) { toast(t('shop.noRerollMoves', { name: pet.name })); return; }
+  const grid = $('reroll-grid');
+  if (grid) {
+    grid.innerHTML = rerollable
+      .map((a) => `<button class="food-item" data-slot="${a.id}"><span class="f-ico">${elementIcon(a.element)}</span><span class="f-name">${a.name}</span><span class="f-price">×${a.power.toFixed(2)}</span></button>`)
+      .join('');
+    grid.querySelectorAll('[data-slot]').forEach((btn) => {
+      btn.addEventListener('click', () => doReroll(btn.dataset.slot));
+    });
+  }
+  openSheet('reroll-sheet');
+}
+
+function doReroll(slotId) {
+  const pet = state.pet;
+  if (!pet) return;
+  if ((pet.coins || 0) < REROLL_COST) { toast(t('shop.notEnough')); closeSheet('reroll-sheet'); return; }
+  const ab = rerollMove(pet, slotId);
+  if (!ab) { closeSheet('reroll-sheet'); return; }
+  pet.coins -= REROLL_COST;
+  closeSheet('reroll-sheet');
+  toast(t('shop.rerolled', { name: pet.name, icon: elementIcon(ab.element), move: ab.name }));
+  refreshShop();
+  refresh(); // moveset in the info panel updates immediately
+  save();
+}
+
+// ---------------------------------------------------------------------------
+// v5 — Notifications (§8, Web Notifications API — best-effort)
+// ---------------------------------------------------------------------------
+// IMPORTANT LIMITATION: browser notifications only fire while THIS page/tab is
+// alive (open or backgrounded). There is NO true push once the app is fully
+// closed — that would require an installed PWA + service worker + a push
+// backend, which is out of scope for v5.
+//
+// Each condition is debounced: it fires once when the pet ENTERS the state and
+// won't fire again until the condition clears and re-triggers (tracked here).
+const notifiedFlags = { poop: false, starving: false, hungry: false, lowhp: false, dirty: false };
+
+function notificationsGranted() {
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted';
+}
+
+function fireNotification(tag, title, body) {
+  if (!notificationsGranted()) return;
+  try {
+    // eslint-disable-next-line no-new
+    new Notification(title, { body, tag, lang: getLang() });
+  } catch (e) { /* best-effort only */ }
+}
+
+// Ask for permission (from the Shop button). Cannot be re-prompted once the
+// user has answered (granted/denied) — the browser only prompts on 'default'.
+function requestNotifications() {
+  if (typeof Notification === 'undefined') { toast(t('notif.unsupported')); return; }
+  if (Notification.permission === 'granted') { toast(t('notif.alreadyOn')); updateNotifyButton(); return; }
+  if (Notification.permission === 'denied') { toast(t('notif.blocked')); updateNotifyButton(); return; }
+  Notification.requestPermission().then((perm) => {
+    if (perm === 'granted') toast(t('notif.enabled'));
+    else toast(t('notif.blocked'));
+    updateNotifyButton();
+  }).catch(() => { /* ignore */ });
+}
+
+function updateNotifyButton() {
+  const btn = $('btn-notify');
+  if (!btn) return;
+  let key = 'notif.enable';
+  let disabled = false;
+  if (typeof Notification === 'undefined') { key = 'notif.unsupported'; disabled = true; }
+  else if (Notification.permission === 'granted') { key = 'notif.on'; disabled = true; }
+  else if (Notification.permission === 'denied') { key = 'notif.blocked'; disabled = true; }
+  btn.textContent = t(key);
+  btn.disabled = disabled;
+  btn.classList.toggle('disabled', disabled);
+}
+
+// Evaluate the notification conditions once per tick (only when granted and the
+// pet is alive & hatched). Debounced via notifiedFlags.
+function updateNotifications(pet) {
+  if (!pet || !notificationsGranted()) return;
+  if (pet.state === 'dead' || pet.stage === 'egg') return;
+  const name = pet.name;
+  const maxHp = computeStats(pet).hp;
+  const conditions = [
+    ['poop', pet.poopNeedUntil > 0, 'notif.poopTitle', 'notif.poopBody'],
+    ['starving', isStarving(pet), 'notif.starveTitle', 'notif.starveBody'],
+    ['hungry', pet.care.hunger < 15, 'notif.hungryTitle', 'notif.hungryBody'],
+    ['lowhp', pet.hpCurrent < maxHp * 0.25, 'notif.lowHpTitle', 'notif.lowHpBody'],
+    ['dirty', pet.care.hygiene < DIRTY_THRESHOLD, 'notif.dirtyTitle', 'notif.dirtyBody'],
+  ];
+  for (const [flag, active, titleKey, bodyKey] of conditions) {
+    if (active && !notifiedFlags[flag]) {
+      notifiedFlags[flag] = true;
+      fireNotification('slimepets-' + flag, t(titleKey), t(bodyKey, { name }));
+    } else if (!active && notifiedFlags[flag]) {
+      notifiedFlags[flag] = false; // reset so it can fire again on re-entry
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Init & event wiring
 // ---------------------------------------------------------------------------
 export function initGame() {
@@ -1173,10 +1414,24 @@ export function initGame() {
 
   // menu buttons
   bindClick('btn-new-egg', () => {
+    const remain = eggCooldownRemaining();
+    if (remain > 0) { // §7: blocked while cooling down
+      toast(t('menu.eggCooldown', { time: fmtDuration(remain) }));
+      return;
+    }
     const nameInput = $('menu-name');
     const nm = nameInput && nameInput.value ? nameInput.value : 'Slime';
     newEgg(nm, randomSeed());
   });
+  // shop navigation + notifications toggle
+  bindClick('btn-shop', () => showScreen('shop'));
+  bindClick('btn-shop-back', () => showScreen('menu'));
+  bindClick('btn-buy-cure', doBuyCure);
+  bindClick('btn-buy-stamina', doBuyStamina);
+  bindClick('btn-buy-reroll', openRerollPicker);
+  bindClick('btn-notify', requestNotifications);
+  bindClick('reroll-close', () => closeSheet('reroll-sheet'));
+  bindSheetBackdrop('reroll-sheet');
   bindClick('btn-rename', () => {
     const nameInput = $('menu-name');
     if (state.pet && nameInput && nameInput.value.trim()) {
@@ -1205,6 +1460,8 @@ export function initGame() {
     highlightActiveLang();
     if (state.pet) refresh();
     refreshTrain();
+    refreshMenu(); // re-apply the (possibly cooldown) egg-button label
+    refreshShop(); // re-apply shop coins + notification button label
   });
   // First paint: fill all static data-i18n text and highlight the saved language.
   applyStaticI18n(document);
