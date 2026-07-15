@@ -20,7 +20,7 @@
       <div id="starve-badge" class="starve-badge" data-i18n="status.starving" style="display:none">😿 Starving!</div>
       <button id="btn-info" class="info-btn" aria-label="pet info">ℹ️</button>
       <button id="btn-shop" class="shop-btn" aria-label="shop">🛒</button>
-      <div id="poop-need" class="poop-need" style="display:none">💩 <span id="poop-timer">90</span>s</div>
+      <div id="poop-need" class="poop-balloon" style="display:none" aria-hidden="true"><span class="poop-balloon-emoji">💩</span></div>
       <svg id="pet-svg" viewBox="0 0 200 200" aria-label="your slime pet"></svg>
       <div id="poop-mess" class="poop-mess" style="display:none">💩</div>
       <p id="egg-hint" class="egg-hint" data-i18n="pet.eggHint">Tap the egg to help it hatch!</p>
@@ -109,13 +109,13 @@
       <div id="train-strike" class="train-strike" style="display:none"></div>
 
       <div class="exercises">
-        <button class="exercise" data-ex="Lift"><span class="ex-ico">🏋️</span><span class="ex-name" data-i18n="train.lift">Lift</span><span class="ex-stat" data-i18n="train.plusStr">+STR</span><span class="ex-cost">22⚡</span></button>
-        <button class="exercise" data-ex="Run"><span class="ex-ico">🏃</span><span class="ex-name" data-i18n="train.run">Run</span><span class="ex-stat" data-i18n="train.plusSpd">+SPD</span><span class="ex-cost">18⚡</span></button>
-        <button class="exercise" data-ex="Swim"><span class="ex-ico">🏊</span><span class="ex-name" data-i18n="train.swim">Swim</span><span class="ex-stat" data-i18n="train.plusHp">+HP</span><span class="ex-cost">24⚡</span></button>
-        <button class="exercise" data-ex="Block"><span class="ex-ico">🛡️</span><span class="ex-name" data-i18n="train.block">Block</span><span class="ex-stat" data-i18n="train.plusDef">+DEF</span><span class="ex-cost">16⚡</span></button>
-        <button class="exercise" data-ex="Focus"><span class="ex-ico">🎯</span><span class="ex-name" data-i18n="train.focus">Focus</span><span class="ex-stat" data-i18n="train.plusCrit">+CRIT</span><span class="ex-cost">20⚡</span></button>
+        <button class="exercise" data-ex="Lift"><span class="ex-ico">🏋️</span><span class="ex-name" data-i18n="train.lift">Lift</span><span class="ex-stat" data-i18n="train.plusStr">+STR</span></button>
+        <button class="exercise" data-ex="Run"><span class="ex-ico">🏃</span><span class="ex-name" data-i18n="train.run">Run</span><span class="ex-stat" data-i18n="train.plusSpd">+SPD</span></button>
+        <button class="exercise" data-ex="Swim"><span class="ex-ico">🏊</span><span class="ex-name" data-i18n="train.swim">Swim</span><span class="ex-stat" data-i18n="train.plusHp">+HP</span></button>
+        <button class="exercise" data-ex="Block"><span class="ex-ico">🛡️</span><span class="ex-name" data-i18n="train.block">Block</span><span class="ex-stat" data-i18n="train.plusDef">+DEF</span></button>
+        <button class="exercise" data-ex="Focus"><span class="ex-ico">🎯</span><span class="ex-name" data-i18n="train.focus">Focus</span><span class="ex-stat" data-i18n="train.plusCrit">+CRIT</span></button>
       </div>
-      <p class="hint" data-i18n="train.hint">Training costs stamina. A lazy slime might refuse — that's free, at least!</p>
+      <p class="hint" data-i18n="train.hint">A lazy slime might refuse to train — that's free, at least!</p>
     </div>
   </section>
 
@@ -134,16 +134,17 @@
         <input id="menu-name" type="text" maxlength="14" placeholder="Slime" />
       </label>
       <button id="btn-rename" class="big-btn" data-i18n="menu.rename">Rename Pet</button>
-      <button id="btn-reset" class="big-btn danger" data-i18n="menu.reset">Reset Everything</button>
       <p class="hint" data-i18n="menu.hint">A new egg is procedurally generated from a random seed — every slime is unique!</p>
 
-      <div class="lang-select">
-        <span class="field-label" data-i18n="menu.language">Language</span>
-        <div class="lang-buttons">
-          <button class="lang-btn" data-lang="it">🇮🇹 Italiano</button>
-          <button class="lang-btn" data-lang="ja">🇯🇵 日本語</button>
-          <button class="lang-btn" data-lang="en">🇬🇧 English</button>
-        </div>
+      <button id="btn-language" class="big-btn" data-i18n="menu.languageBtn">🌐 Language</button>
+
+      <button id="btn-notify" class="big-btn" data-i18n="notif.enable">🔔 Enable notifications</button>
+      <p class="hint" data-i18n="notif.hint">Reminders only work while SlimePets is open in a tab.</p>
+
+      <div class="menu-reset">
+        <p id="reset-warning" class="reset-warning" data-i18n="menu.resetWarning" style="display:none">This wipes everything — tap again to confirm!</p>
+        <button id="btn-reset" class="big-btn danger" data-i18n="menu.reset">Reset Everything</button>
+        <button id="btn-reset-cancel" class="big-btn" data-i18n="menu.cancel" style="display:none">Cancel</button>
       </div>
     </div>
   </section>
@@ -158,20 +159,18 @@
       <div class="shop-card">
         <span class="shop-ico">❤️</span>
         <div class="shop-info"><span class="shop-name" data-i18n="shop.curePotion">Cure Potion</span><span class="shop-desc" data-i18n="shop.curePotionDesc">Fully restores HP</span></div>
-        <button id="btn-buy-cure" class="shop-buy">🪙 50</button>
+        <button id="btn-buy-cure" class="shop-buy">🪙 30</button>
       </div>
       <div class="shop-card">
         <span class="shop-ico">⚡</span>
         <div class="shop-info"><span class="shop-name" data-i18n="shop.staminaPotion">Stamina Potion</span><span class="shop-desc" data-i18n="shop.staminaPotionDesc">Fully restores stamina</span></div>
-        <button id="btn-buy-stamina" class="shop-buy">🪙 50</button>
+        <button id="btn-buy-stamina" class="shop-buy">🪙 30</button>
       </div>
       <div class="shop-card">
         <span class="shop-ico">🎲</span>
         <div class="shop-info"><span class="shop-name" data-i18n="shop.reroll">Ability Reroll</span><span class="shop-desc" data-i18n="shop.rerollDesc">Reroll one learned move</span></div>
         <button id="btn-buy-reroll" class="shop-buy">🪙 200</button>
       </div>
-      <button id="btn-notify" class="big-btn" data-i18n="notif.enable">🔔 Enable notifications</button>
-      <p class="hint" data-i18n="notif.hint">Reminders only work while SlimePets is open in a tab.</p>
       <button id="btn-shop-back" class="big-btn" data-i18n="shop.back">⬅ Back</button>
     </div>
   </section>
@@ -208,6 +207,18 @@
         <button class="rps-btn" data-rps="rock">✊</button>
         <button class="rps-btn" data-rps="paper">✋</button>
         <button class="rps-btn" data-rps="scissors">✌️</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== LANGUAGE CHOOSER ===================== -->
+  <div id="lang-sheet" class="sheet-overlay">
+    <div class="sheet">
+      <div class="sheet-head"><span data-i18n="menu.chooseLanguage">🌐 Choose language</span><button id="lang-close" class="info-close" aria-label="close">✕</button></div>
+      <div class="lang-buttons">
+        <button class="lang-btn" data-lang="it">🇮🇹 Italiano</button>
+        <button class="lang-btn" data-lang="ja">🇯🇵 日本語</button>
+        <button class="lang-btn" data-lang="en">🇬🇧 English</button>
       </div>
     </div>
   </div>

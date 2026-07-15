@@ -204,5 +204,19 @@ Web Notifications API, best-effort while the page is alive (open/backgrounded). 
 ### i18n (§9/§10)
 All new user-facing strings (shop, potions, ability reroll, notifications, egg cooldown, bored-of-food toast, enable-notifications) added to EN + IT + JA. Move proper-names stay English.
 
+## v6 — care/economy simplification & UI polish (Agent A)
+
+Serialization `version` bumped to **6**; `deserializePet` migrates the new field. New persistent field: `nextPoopAt` (timestamp of the next potty need).
+
+- **Heal (🩹) is always free, never charges coins.** The 4h free-heal cooldown stays (`pet.lastFreeHealAt`); pressing Heal on cooldown just refuses with a toast (`toast.healNotReady` — "Not ready yet — try a Cure Potion!") and deducts nothing. Off-cooldown top-ups are the shop's **Cure Potion**. Button label is just "Heal" (no price, no countdown).
+- **Potion prices dropped to 30** (Cure Potion & Stamina Potion; were 50). Reroll unchanged (200).
+- **ℹ️ info button moved to the TOP-LEFT** of `#pet-stage` (🛒 shop stays bottom-right).
+- **Baby/milk boredom exemption:** the same-food-3× penalty never applies to `milk` or while `stage==='baby'` — a baby can only drink milk, so it never gets bored/sad from it.
+- **No action consumes stamina.** Training (`doTrain`) and Rock-Paper-Scissors (`doPlay`/`playRps`) no longer cost or require stamina, and nothing is gated by low stamina (battles were already free). The stamina bar + Stamina Potion remain. The training-refusal 5-min strike (laziness/spoiled) stays. Exercise buttons no longer show a `⚡` cost.
+- **Poop is a 30-minute timer (`POOP_INTERVAL_MS`).** ~30 min after the last relief (hatch, potty success, or floor cleanup) the need triggers; `nextPoopAt` is persisted. While active a cute comic **thought-bubble** (💩) shows near the pet — **no countdown number** anywhere. A hidden ~2 min grace (`POOP_GRACE_MS`, not shown) follows; ignored, it becomes a floor accident (`poopInRoom`). Pressing **Potty** during the need clears it and restarts the timer. Education ≥ 60 → 50% self-potty (also restarts the timer). The old meal-count trigger (`mealsSincePoop`) is retired.
+- **Notifications toggle moved to the Menu** screen (out of the Shop); wired identically (`updateNotifyButton`/`requestNotifications`).
+- **Language is a "🌐 Language" button** that opens an in-page chooser sheet (`#lang-sheet`, 🇮🇹/🇯🇵/🇬🇧), replacing the always-visible 3-flag selector. Live switching + persistence unchanged.
+- **Reset is at the BOTTOM of the Menu with an in-page two-step confirm** (no native `confirm()`): first press arms it + shows a warning and a Cancel; a second press within ~4s (auto-disarm) runs the full `resetGame()` wipe.
+
 ## Style
 Pastel palette from genome hue (HSL: body `hsl(hue 70% 80%)`, darker outline same hue, accent hue2). Big glossy eyes with white highlights, blush circles, tiny mouth. Idle bounce/squish animation (CSS or SVG transform). Everything cute — think Kirby/slime mascots.

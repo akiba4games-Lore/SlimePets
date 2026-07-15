@@ -42,8 +42,8 @@ const DECAY_SLEEP = { hunger: 9, hygiene: 4, happiness: 2 }; // happiness is a g
 // Passive HP healing, as a fraction of max HP per hour (sleeping heals faster).
 const HEAL_RATE_AWAKE = 0.08; // +8% / hour
 const HEAL_RATE_SLEEP = 0.32; // +32% / hour
-// Heal action cost while on cooldown; a free heal is available every 4 hours.
-const HEAL_COST = 25;
+// Heal (🩹) is always FREE but limited to once every 4 hours. It never costs
+// coins — for an off-cooldown top-up players buy a Cure Potion in the shop.
 const HEAL_FREE_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 real hours
 
 // Training config.
@@ -83,23 +83,25 @@ const FOOD_BORED_HAPPY = 8; // happiness lost when bored
 const DIRTY_THRESHOLD = 35;
 const DIRTY_DECAY_MULT = 1.6;
 
-// v5 — shop prices (§6) and new-egg cooldown (§7).
-const CURE_COST = 50;
-const STAMINA_POTION_COST = 50;
+// v5 — shop prices (§6) and new-egg cooldown (§7). v6: potions dropped to 30.
+const CURE_COST = 30;
+const STAMINA_POTION_COST = 30;
 const REROLL_COST = 200;
 
 // Spoiled food-refusal flavor lines live in i18n as brat.0 … brat.(N-1).
 const BRAT_LINE_COUNT = 3;
 
 // v3 timings & drifts.
-const POOP_NEED_MS = 90 * 1000; // countdown before an accident
-const MEALS_PER_POOP = 3;
+// v6 — poop is now a simple 30-minute timer (§6). The need triggers ~30 min
+// after the last relief (potty success or floor cleanup / hatch); once it
+// triggers there's a hidden ~2 min grace before an accident on the floor.
+const POOP_INTERVAL_MS = 30 * 60 * 1000; // 30 min between potty needs
+const POOP_GRACE_MS = 2 * 60 * 1000; // hidden grace after the need triggers
 const ACHIEVEMENT_WINDOW_MS = 3 * 60 * 1000; // "deserved" cuddle window
 const MISBEHAVIOR_WINDOW_MS = 60 * 1000; // scold-valid window after a refusal
 const SPOILED_DECAY_PER_H = 1; // spoiled -1/h
 const WEIGHT_DRIFT_PER_H = 0.3; // weight drifts toward 30 at 0.3/h
 const WEIGHT_TARGET = 30;
-const RPS_STAMINA = 5;
 const SELF_POTTY_EDU = 60; // education >= this enables self-potty
 const TRAIN_HYGIENE_HIT = 12; // extra hygiene lost per training session
 const TRAIN_BLOCK_MS = 5 * 60 * 1000; // v5.1: a training refusal locks ALL training this long
@@ -343,6 +345,7 @@ function hatch() {
   if (!pet || pet.stage !== 'egg') return;
   advanceStage(pet); // -> baby
   pet.lastFedAt = Date.now(); // start the starvation clock at hatch, not egg birth
+  scheduleNextPoop(pet); // start the 30-min potty timer at hatch
   toast(t('toast.hatched', { name: pet.name }));
   bouncePet();
   reaction('🎉');
@@ -418,23 +421,30 @@ function markAchievement() {
   if (state.pet) state.pet.lastAchievementAt = Date.now();
 }
 
-// After a meal is eaten, count it and possibly trigger a potty need.
-function maybeTriggerPoopNeed(pet) {
-  if (pet.mealsSincePoop < MEALS_PER_POOP) return;
-  if (pet.poopNeedUntil > 0 || pet.poopInRoom) return; // already busy
-  pet.mealsSincePoop = 0;
-  if (pet.education >= SELF_POTTY_EDU && Math.random() < 0.5) {
-    // Well-schooled pet takes care of it on its own.
-    toast(t('toast.selfPotty', { name: pet.name }));
-  } else {
-    pet.poopNeedUntil = Date.now() + POOP_NEED_MS;
-    toast(t('toast.needsPotty', { name: pet.name }));
-  }
+// v6 — arm the next potty need ~30 min from now. Called after any relief:
+// hatch, a potty success, a floor cleanup, or a self-potty.
+function scheduleNextPoop(pet) {
+  pet.nextPoopAt = Date.now() + POOP_INTERVAL_MS;
 }
 
-// Live countdown: an expired potty need turns into an accident on the floor.
+// v6 — the 30-min poop timer + hidden grace. Runs every tick.
+//  (1) timer elapsed & pet free  -> the need triggers (or a well-schooled pet
+//      goes on its own); a thought-bubble shows near the pet (NO countdown).
+//  (2) grace elapsed, need unmet -> an accident lands on the floor.
 function advancePoop(pet) {
-  if (pet.poopNeedUntil > 0 && Date.now() >= pet.poopNeedUntil) {
+  if (pet.stage === 'egg' || pet.state === 'dead') return;
+  const now = Date.now();
+  if (pet.poopNeedUntil === 0 && !pet.poopInRoom && pet.nextPoopAt > 0 && now >= pet.nextPoopAt) {
+    if (pet.education >= SELF_POTTY_EDU && Math.random() < 0.5) {
+      // Well-schooled pet takes care of it on its own — resets the timer.
+      scheduleNextPoop(pet);
+      if (state.screen === 'pet') toast(t('toast.selfPotty', { name: pet.name }));
+    } else {
+      pet.poopNeedUntil = now + POOP_GRACE_MS; // hidden grace (not shown)
+      if (state.screen === 'pet') toast(t('toast.needsPotty', { name: pet.name }));
+    }
+  }
+  if (pet.poopNeedUntil > 0 && now >= pet.poopNeedUntil) {
     pet.poopNeedUntil = 0;
     pet.poopInRoom = true;
     pet.poopScolded = false;
@@ -506,16 +516,17 @@ export function doFeedFood(key) {
   if (pet.lastFoodId === key) pet.sameFoodStreak = (pet.sameFoodStreak || 0) + 1;
   else pet.sameFoodStreak = 1;
   pet.lastFoodId = key;
-  const bored = pet.sameFoodStreak >= FOOD_BORED_STREAK;
+  // v6 (§4): milk is EXEMPT from boredom — a baby can only drink milk, so
+  // repeated milk must never sadden it (and babies never get bored of food).
+  const boredExempt = key === 'milk' || pet.stage === 'baby';
+  const bored = !boredExempt && pet.sameFoodStreak >= FOOD_BORED_STREAK;
   if (bored) c.happiness = clamp(c.happiness - FOOD_BORED_HAPPY, 0, 100);
-  pet.mealsSincePoop = (pet.mealsSincePoop || 0) + 1;
   pet.lastFedAt = Date.now(); // any feed resets the starvation clock (§6)
   reaction(bored ? '😒' : fd.emoji);
   bouncePet();
   closeSheet('food-sheet');
   if (bored) toast(t('toast.boredFood', { name: pet.name, food: foodName(key).toLowerCase() }));
   else toast(t('toast.enjoyedFood', { name: pet.name, food: foodName(key).toLowerCase() }));
-  maybeTriggerPoopNeed(pet);
   checkLearning(); // weight may have crossed a milestone
   afterAction('yum!');
 }
@@ -550,12 +561,14 @@ export function doPotty() {
   const c = pet.care;
   if (pet.poopNeedUntil > 0) {
     pet.poopNeedUntil = 0;
+    scheduleNextPoop(pet); // relieved in time -> restart the 30-min timer
     c.happiness = clamp(c.happiness + 4, 0, 100);
     reaction('🚽');
     toast(t('toast.pottyGood', { name: pet.name }));
   } else if (pet.poopInRoom) {
     pet.poopInRoom = false;
     pet.poopScolded = false;
+    scheduleNextPoop(pet); // cleaned up -> restart the 30-min timer
     c.hygiene = clamp(c.hygiene + 8, 0, 100);
     reaction('🧹');
     toast(t('toast.messCleaned'));
@@ -626,13 +639,13 @@ export function doPlay() {
   if (!requirePet()) return;
   const pet = state.pet;
   if (pet.sleeping) pet.sleeping = false;
-  if (pet.stamina < RPS_STAMINA) {
-    toast(t('toast.tooPooped', { name: pet.name }));
-    return;
-  }
+  // v6: playing no longer costs or requires stamina.
   openRps();
 }
 
+// v6 — Heal (🩹) is ALWAYS FREE but limited to once every 4 hours. It never
+// charges coins: for an off-cooldown top-up players buy a Cure Potion. While
+// on cooldown, pressing Heal just refuses with a toast (no coins deducted).
 export function doHeal() {
   if (!requirePet()) return;
   const pet = state.pet;
@@ -641,20 +654,15 @@ export function doHeal() {
     toast(t('toast.fullHealth'));
     return;
   }
-  const free = healCooldownRemaining(pet) <= 0;
-  if (free) {
-    pet.lastFreeHealAt = Date.now();
-  } else {
-    if ((pet.coins || 0) < HEAL_COST) {
-      toast(t('toast.notEnoughCoins'));
-      return;
-    }
-    pet.coins -= HEAL_COST;
+  if (healCooldownRemaining(pet) > 0) {
+    toast(t('toast.healNotReady'));
+    return;
   }
+  pet.lastFreeHealAt = Date.now();
   pet.hpCurrent = maxHp;
   reaction('🩹');
   bouncePet();
-  toast(free ? t('toast.patchedUp', { name: pet.name }) : t('toast.healedCost', { cost: HEAL_COST }));
+  toast(t('toast.patchedUp', { name: pet.name }));
   afterAction('healed!');
 }
 
@@ -684,10 +692,7 @@ export function doTrain(name) {
     toast(t('toast.trainBlocked', { name: pet.name, time: fmtDuration(pet.trainBlockUntil - Date.now()) }));
     return;
   }
-  if (pet.stamina < ex.stam) {
-    toast(t('toast.tooTired', { name: pet.name }));
-    return;
-  }
+  // v6: training no longer costs or requires stamina.
   // Refusal (free): laziness + spoiled, tempered by education. A refusal puts the
   // pet ON STRIKE — ALL training locks for 5 min (clear early by scolding).
   const refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
@@ -701,8 +706,7 @@ export function doTrain(name) {
     save();
     return;
   }
-  // pay costs
-  pet.stamina = clamp(pet.stamina - ex.stam, 0, pet.genome.maxStamina);
+  // pay costs (v6: no stamina cost — only hunger/hygiene/weight)
   pet.care.hunger = clamp(pet.care.hunger - ex.hunger, 0, 100);
   pet.care.hygiene = clamp(pet.care.hygiene - ex.hygiene - TRAIN_HYGIENE_HIT, 0, 100);
   // Working out burns a little weight (running burns the most).
@@ -760,11 +764,7 @@ export function playRps(choice) {
   if (!requirePet()) return;
   const pet = state.pet;
   if (!RPS_EMOJI[choice]) return;
-  if (pet.stamina < RPS_STAMINA) {
-    toast(t('toast.tooPooped', { name: pet.name }));
-    return;
-  }
-  pet.stamina = clamp(pet.stamina - RPS_STAMINA, 0, pet.genome.maxStamina);
+  // v6: playing no longer costs or requires stamina.
   const opts = ['rock', 'paper', 'scissors'];
   const petChoice = opts[Math.floor(Math.random() * opts.length)];
   const youEl = $('rps-you');
@@ -807,16 +807,8 @@ function refreshPoopUI() {
   const need = $('poop-need');
   const mess = $('poop-mess');
   if (!pet) return;
-  if (need) {
-    if (pet.poopNeedUntil > 0) {
-      need.style.display = '';
-      const secs = Math.max(0, Math.ceil((pet.poopNeedUntil - Date.now()) / 1000));
-      const t = $('poop-timer');
-      if (t) t.textContent = secs;
-    } else {
-      need.style.display = 'none';
-    }
-  }
+  // v6: a cute thought-bubble while the need is active — NO countdown shown.
+  if (need) need.style.display = pet.poopNeedUntil > 0 ? '' : 'none';
   if (mess) mess.style.display = pet.poopInRoom ? '' : 'none';
 }
 
@@ -1020,15 +1012,8 @@ export function refresh() {
   const woundedNow = pet.stage !== 'egg' && pet.hpCurrent < stats.hp * 0.5;
   if (statusEl) statusEl.style.display = woundedNow ? '' : 'none';
 
-  // heal button label: free when off cooldown, else remaining time or coin cost
-  const healBtn = $('btn-heal');
-  if (healBtn) {
-    const lbl = healBtn.querySelector('.act-label');
-    if (lbl) {
-      const remain = healCooldownRemaining(pet);
-      lbl.textContent = remain <= 0 ? t('action.heal') : t('action.healCooldown', { time: fmtDuration(remain) });
-    }
-  }
+  // v6: Heal is always FREE (4h cooldown enforced on press), so the button is
+  // just "Heal" — no price, no countdown. The static data-i18n label handles it.
 }
 
 // Milliseconds until the next free heal (0 = free heal available now).
@@ -1069,11 +1054,11 @@ function refreshTrain() {
       badge.style.display = 'none';
     }
   }
-  // disable exercises the pet can't afford OR while on strike
+  // disable exercises only while on strike or still an egg (v6: no stamina gate)
   document.querySelectorAll('.exercise').forEach((btn) => {
     const ex = EXERCISES[btn.dataset.ex];
     if (!ex) return;
-    btn.classList.toggle('disabled', blocked || pet.stamina < ex.stam || pet.stage === 'egg');
+    btn.classList.toggle('disabled', blocked || pet.stage === 'egg');
   });
 }
 
@@ -1132,6 +1117,37 @@ export function resetGame() {
   clearRivals();
   newEgg('Slime', randomSeed());
   save();
+}
+
+// v6 — in-page two-step reset confirmation (replaces the native confirm(),
+// which hangs the preview and is jarring). First press arms + shows a warning
+// and a Cancel; a second press within the window wipes everything. Auto-disarms
+// after RESET_DISARM_MS.
+let resetArmed = false;
+let resetDisarmTimer = 0;
+const RESET_DISARM_MS = 4000;
+
+function armReset() {
+  resetArmed = true;
+  const warn = $('reset-warning');
+  const cancel = $('btn-reset-cancel');
+  const btn = $('btn-reset');
+  if (warn) warn.style.display = '';
+  if (cancel) cancel.style.display = '';
+  if (btn) { btn.textContent = t('menu.resetConfirm'); btn.classList.add('armed'); }
+  clearTimeout(resetDisarmTimer);
+  resetDisarmTimer = setTimeout(disarmReset, RESET_DISARM_MS);
+}
+
+function disarmReset() {
+  resetArmed = false;
+  clearTimeout(resetDisarmTimer);
+  const warn = $('reset-warning');
+  const cancel = $('btn-reset-cancel');
+  const btn = $('btn-reset');
+  if (warn) warn.style.display = 'none';
+  if (cancel) cancel.style.display = 'none';
+  if (btn) { btn.textContent = t('menu.reset'); btn.classList.remove('armed'); }
 }
 
 export function save() {
@@ -1209,7 +1225,10 @@ function grantBattleResult(won, info) {
 // The menu has no dynamic content anymore (the timed "new egg" button was
 // removed — "Reset Everything" is the only restart). Kept as a no-op so the
 // existing call sites (showScreen/tick/onLangChange) stay valid.
-function refreshMenu() {}
+function refreshMenu() {
+  // v6: the notifications toggle lives on the Menu screen now (was in the Shop).
+  updateNotifyButton();
+}
 
 // ---------------------------------------------------------------------------
 // v5 — Shop (§6)
@@ -1218,7 +1237,6 @@ function refreshShop() {
   const pet = state.pet;
   const c = $('shop-coins');
   if (c) c.textContent = `🪙 ${(pet && pet.coins) || 0}`;
-  updateNotifyButton();
 }
 
 // Cure Potion — fully restores HP (no cooldown, unlike the free Heal).
@@ -1450,21 +1468,30 @@ export function initGame() {
       toast(t('toast.renamed'));
     }
   });
+  // v6: in-page double-confirm (no native confirm()).
   bindClick('btn-reset', () => {
-    if (confirm(t('confirm.reset'))) resetGame();
+    if (!resetArmed) { armReset(); return; }
+    disarmReset();
+    resetGame();
   });
+  bindClick('btn-reset-cancel', disarmReset);
 
   // populate menu name field
   const nameInput = $('menu-name');
   if (nameInput && state.pet) nameInput.value = state.pet.name;
 
-  // language selector (Menu screen) + live re-render wiring
+  // v6: language is a single "🌐 Language" button that opens an in-page chooser
+  // (bottom sheet), replacing the always-visible 3-flag selector.
+  bindClick('btn-language', () => { highlightActiveLang(); openSheet('lang-sheet'); });
+  bindClick('lang-close', () => closeSheet('lang-sheet'));
+  bindSheetBackdrop('lang-sheet');
   document.querySelectorAll('.lang-btn').forEach((btn) => {
-    btn.addEventListener('click', () => setLang(btn.dataset.lang));
+    btn.addEventListener('click', () => { setLang(btn.dataset.lang); closeSheet('lang-sheet'); });
   });
   // Re-run every screen's render when the language changes so on-screen text
   // (including dynamic labels) updates live without a reload.
   onLangChange(() => {
+    disarmReset(); // avoid a half-armed reset showing a stale label after relabel
     applyStaticI18n(document);
     highlightActiveLang();
     if (state.pet) refresh();
@@ -1510,14 +1537,16 @@ export function initGame() {
     return state.pet.coins;
   };
   // v3 lifestyle test helpers.
-  window.DEV.meal = () => {
+  // v6: poop is time-based now. Force the potty timer to fire immediately.
+  window.DEV.poop = () => {
     if (!state.pet) return;
-    state.pet.mealsSincePoop = (state.pet.mealsSincePoop || 0) + 1;
-    maybeTriggerPoopNeed(state.pet);
+    state.pet.nextPoopAt = Date.now();
+    advancePoop(state.pet);
     refresh();
     save();
-    return state.pet.mealsSincePoop;
+    return { poopNeedUntil: state.pet.poopNeedUntil, poopInRoom: state.pet.poopInRoom };
   };
+  window.DEV.meal = window.DEV.poop; // back-compat alias
   window.DEV.spoil = (n) => {
     if (!state.pet) return;
     state.pet.spoiled = clamp(Number(n) || 0, 0, 100);

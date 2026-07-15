@@ -345,7 +345,7 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 5,
+    version: 6,
     name: (name && String(name).trim()) || 'Slime',
     genome,
     stage: 'egg',
@@ -371,8 +371,9 @@ export function createPet(name, seed) {
     weight: 30, // 0..100, chubbiness; drifts toward 30
     education: 20, // 0..100, reduces misbehavior & enables self-potty
     spoiled: 0, // 0..100, hidden-ish; rises from undeserved cuddles
-    mealsSincePoop: 0, // every 3 meals triggers a potty need
-    poopNeedUntil: 0, // timestamp: active potty-need countdown deadline (0 = none)
+    mealsSincePoop: 0, // legacy (v6: poop is time-based, no longer meal-driven)
+    nextPoopAt: now + 30 * 60 * 1000, // v6: next potty need fires ~30 min from now
+    poopNeedUntil: 0, // timestamp: hidden grace deadline while a need is active (0 = none)
     poopInRoom: false, // an accident is on the floor
     poopScolded: false, // the current accident has already been scolded once
     lastAchievementAt: 0, // timestamp of last battle/training/play win
@@ -549,7 +550,7 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 5;
+  pet.version = 6;
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -583,6 +584,8 @@ export function deserializePet(obj) {
   pet.education = clampHp0(num(pet.education, 20));
   pet.spoiled = clampHp0(num(pet.spoiled, 0));
   pet.mealsSincePoop = Math.max(0, Math.floor(num(pet.mealsSincePoop, 0)));
+  // v6: time-based poop timer. Migrate older saves with a fresh 30-min window.
+  pet.nextPoopAt = num(pet.nextPoopAt, now + 30 * 60 * 1000);
   pet.poopNeedUntil = num(pet.poopNeedUntil, 0);
   pet.poopInRoom = !!pet.poopInRoom;
   pet.poopScolded = !!pet.poopScolded;

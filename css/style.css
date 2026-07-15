@@ -459,6 +459,27 @@ body {
   color: var(--pink-d);
 }
 
+/* ---------------- Reset (bottom of menu, in-page double-confirm) ---------------- */
+.menu-reset {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reset-warning {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #b0304a;
+  background: #ffe0e0;
+  border-radius: 14px;
+  padding: 10px 12px;
+  animation: pulse 0.9s infinite;
+}
+.big-btn.danger.armed { animation: pulse 0.7s infinite; }
+
 /* ---------------- Tab bar ---------------- */
 .tabbar {
   position: absolute;
@@ -495,7 +516,7 @@ body {
 .info-btn {
   position: absolute;
   top: 8px;
-  right: 8px;
+  left: 8px;
   z-index: 3;
   border: none;
   background: rgba(255, 255, 255, 0.85);
@@ -526,19 +547,39 @@ body {
 }
 .shop-btn:active { transform: scale(0.9); }
 
-.poop-need {
+/* v6 — poop need is a cute comic thought-bubble near the pet (no countdown). */
+.poop-balloon {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 14%;
+  right: 20%;
   z-index: 3;
-  background: #ffd6d6;
-  color: #b0304a;
-  font-weight: 800;
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 2px solid #ffd6e6;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: var(--shadow);
-  animation: pulse 0.8s infinite;
+  pointer-events: none;
+  animation: poopbob 1.8s ease-in-out infinite;
+}
+.poop-balloon .poop-balloon-emoji { font-size: 26px; line-height: 1; }
+/* the two little trailing bubbles that make it read as a thought bubble */
+.poop-balloon::before,
+.poop-balloon::after {
+  content: "";
+  position: absolute;
+  background: #ffffff;
+  border: 2px solid #ffd6e6;
+  border-radius: 50%;
+}
+.poop-balloon::before { width: 14px; height: 14px; bottom: -10px; left: -4px; }
+.poop-balloon::after { width: 8px; height: 8px; bottom: -20px; left: -12px; }
+@keyframes poopbob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
 }
 .poop-mess {
   position: absolute;
