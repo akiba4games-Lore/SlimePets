@@ -21,6 +21,8 @@ import {
   exportPetCode,
   importPetCode,
   ELEMENTS,
+  PERSONALITIES,
+  derivePersonality,
   STAGE_ORDER,
   STAGE_DURATION_MS,
   EGG_HATCH_MS,
@@ -67,10 +69,20 @@ const HEAL_MAX_CHARGES = 3;  // up to 3 charges stored
 const PLAY_REFILL_MS = 5 * 60 * 1000; // per-charge refill: 1 / 5 min
 const PLAY_MAX_CHARGES = 3;           // up to 3 charges stored
 
+// v14B — Clean (🫧) is likewise limited to CHARGES: 3, one refills every 5 min
+// (up to 3). Cleaning stays otherwise free (still applies the bath effect).
+const CLEAN_REFILL_MS = 5 * 60 * 1000; // per-charge refill: 1 / 5 min
+const CLEAN_MAX_CHARGES = 3;           // up to 3 charges stored
+
 // v12 — game version + menu changelog (newest-first). Item text carries EN + IT
 // (JA where straightforward); headings are localized via i18n.
-export const GAME_VERSION = 'v0.14';
+export const GAME_VERSION = 'v0.14b';
 const CHANGELOG = [
+  { version: 'v0.14b', items: [{
+    en: 'Pets now have a PERSONALITY (Lazy, Glutton, Cuddly, Playful, Messy, Sleepyhead) set from their seed — it tweaks their care (e.g. gluttons get hungry faster, playful pets refill play charges quicker, messy pets get dirty sooner) and plays little idle animations on the pet screen. See it in the info panel. Also: the shop Back button now returns to your pet.',
+    it: 'I pet ora hanno una PERSONALITÀ (Pigro, Goloso, Coccolone, Giocoso, Disordinato, Dormiglione) determinata dal loro seme — modifica le cure (es. i golosi hanno fame più in fretta, i giocosi ricaricano prima le cariche di gioco, i disordinati si sporcano prima) e mostra animazioni sullo schermo del pet. La vedi nel pannello info. Inoltre: il tasto Indietro del negozio ora torna al pet.',
+    ja: 'ペットに せいかくが つきました（なまけもの・くいしんぼう・あまえんぼう・あそびずき・ずぼら・ねぼすけ）。シードで きまり、せわに えいきょうし（くいしんぼうは おなかが すきやすい、あそびずきは チャージが はやい、ずぼらは よごれやすい など）、がめんで アイドルアニメを みせます。じょうほうパネルで かくにん。また、ショップの「もどる」は ペットへ もどります。',
+  }] },
   { version: 'v0.14', items: [{
     en: 'Shop Back returns to Menu; daily free 50 coins in the shop; battles use charges (3, +1 every 5 min) for Random & Rivals; Protect now blocks 50% (was full); neglect makes pets SICK with a 24h cure deadline (they lose stats each hour, no more instant HP-death); tap a battle move to use it, long-press to inspect it.',
     it: 'Il tasto Indietro del negozio torna al Menu; 50 monete gratis al giorno nel negozio; le battaglie usano cariche (3, +1 ogni 5 min) per Casuale e Rivali; Protezione ora blocca il 50% (prima tutto); la trascuratezza fa AMMALARE il pet con 24h per curarlo (perde statistiche ogni ora, niente più morte istantanea per HP); tocca una mossa in battaglia per usarla, tieni premuto per ispezionarla.',
@@ -135,7 +147,7 @@ const FOODS = {
   cake: { emoji: '🍰', cost: 15, hunger: 10, hp: 3, stamina: 4, weight: 4, happy: 12, sweet: true },
   meat: { emoji: '🍖', cost: 20, hunger: 22, hp: 6, stamina: 8, weight: 1, happy: 0, sweet: false },
 };
-const FOODS_BABY = ['milk'];
+const FOODS_BABY = ['milk', 'apple', 'icecream'];
 const FOODS_CHILD = ['apple', 'bread', 'icecream', 'cake', 'meat'];
 function foodName(key) { return t('food.' + key); }
 
@@ -179,6 +191,54 @@ const DAILY_COIN_AMOUNT = 50;
 // consume 1 to start; local QR PvP is never gated.
 const BATTLE_REFILL_MS = 5 * 60 * 1000;
 const BATTLE_MAX_CHARGES = 3;
+
+// v14B (§14B) — Personality flavor. Modest tweaks to action outcomes + decay so
+// no personality is broken or OP; a pet whose personality matches none of a given
+// branch keeps the pre-14B baseline exactly (all multipliers = 1, bonuses = 0).
+const LAZY_REFUSE_BONUS = 0.15;          // Pigro: +15% flat training-refusal chance
+const LAZY_STAMINA_MULT = 0.75;          // Pigro: slower stamina regen (0.75×)
+const SLEEPY_STAMINA_MULT = 1.15;        // Dormiglione: small awake stamina-regen bonus
+const SLEEPY_SLEEP_HEAL_MULT = 1.4;      // Dormiglione: sleep restores more HP (1.4×)
+const GLUTTON_HUNGER_MULT = 1.3;         // Goloso: hunger decays faster (1.3×)
+const GLUTTON_FOOD_HAPPY = 3;            // Goloso: extra happiness per feed
+const GLUTTON_WEIGHT_MULT = 1.3;         // Goloso: weight GAIN from food ×1.3
+const CUDDLY_CUDDLE_HAPPY = 4;           // Coccolone: extra happiness per cuddle
+const CUDDLY_IGNORE_MS = 30 * 60 * 1000; // Coccolone: "recently cuddled" window (30 min)
+const CUDDLY_IGNORE_MULT = 1.25;         // Coccolone: happiness decays 1.25× faster when ignored
+const PLAYFUL_PLAY_HAPPY = 3;            // Giocoso: extra happiness on an RPS win
+const PLAYFUL_HAPPY_MULT = 1.1;          // Giocoso: mild happiness decay (wants to play)
+const PLAYFUL_REFILL_MS = 3.5 * 60 * 1000; // Giocoso: play charges refill in 3.5 min (vs 5)
+const MESSY_HYGIENE_MULT = 1.4;          // Disordinato: hygiene decays faster (1.4×)
+const MESSY_POOP_MULT = 0.7;             // Disordinato: shorter poop interval (poops more often)
+
+// Personality display emoji (info panel + idle animations).
+const PERSONALITY_EMOJI = {
+  lazy: '🦥', glutton: '🤤', cuddly: '💕', playful: '🎈', messy: '💨', sleepyhead: '😴',
+};
+
+// The pet's personality id (falls back to the seed-derived one if unset/invalid).
+function petPersonality(pet) {
+  if (!pet) return '';
+  if (PERSONALITIES.indexOf(pet.personality) >= 0) return pet.personality;
+  return pet.genome ? derivePersonality(pet.genome.seed) : '';
+}
+function isPersona(pet, p) { return petPersonality(pet) === p; }
+
+// Per-pet play-charge refill interval (Giocoso refills faster).
+function playRefillMs(pet) {
+  return isPersona(pet, 'playful') ? PLAYFUL_REFILL_MS : PLAY_REFILL_MS;
+}
+
+// Multiplier on AWAKE happiness decay from personality (idle craving). Coccolone
+// decays faster once it hasn't been cuddled for a while; Giocoso always drifts a
+// little faster (it wants to play).
+function personalityHappyDecayMult(pet) {
+  if (isPersona(pet, 'cuddly')) {
+    return (Date.now() - (pet.lastCuddleAt || 0)) > CUDDLY_IGNORE_MS ? CUDDLY_IGNORE_MULT : 1;
+  }
+  if (isPersona(pet, 'playful')) return PLAYFUL_HAPPY_MULT;
+  return 1;
+}
 
 // v6.1 — training now costs a flat 20 stamina per session (all exercises).
 const TRAIN_STAMINA_COST = 20;
@@ -326,6 +386,81 @@ function bouncePet() {
 }
 
 // ---------------------------------------------------------------------------
+// v14B (§14B) — Personality idle animations. While the pet screen is active and
+// the pet is idle (not egg/dead/sleeping, no modal/sheet/popup open) a short,
+// non-interrupting, personality-flavored animation plays every ~15–30s. It
+// reuses reaction()/bouncePet() and the renderer's sleepy pose — never spammy.
+// ---------------------------------------------------------------------------
+const IDLE_ANIM_MIN_MS = 15000;
+const IDLE_ANIM_MAX_MS = 30000;
+let idleAnimAt = 0;        // wall-clock ms of the next idle anim (0 = unscheduled)
+let idleSleepyTimer = 0;   // pending "restore pose" timer for the Dormiglione doze
+
+function scheduleIdleAnim() {
+  idleAnimAt = Date.now() + IDLE_ANIM_MIN_MS + Math.random() * (IDLE_ANIM_MAX_MS - IDLE_ANIM_MIN_MS);
+}
+
+// Any open sheet / popup / panel / overlay that should suppress idle anims.
+function anyOverlayOpen() {
+  const ids = ['food-sheet', 'lang-sheet', 'reroll-sheet', 'confirm-popup', 'rps-panel', 'info-panel', 'train-anim-overlay'];
+  for (const id of ids) {
+    const el = $(id);
+    if (el && el.classList.contains('open')) return true;
+  }
+  return false;
+}
+
+function petIsIdle() {
+  const pet = state.pet;
+  return !!(pet && state.screen === 'pet' && pet.stage !== 'egg'
+    && pet.state !== 'dead' && !pet.sleeping && !scoldSadPose && !anyOverlayOpen());
+}
+
+// Play one short personality-flavored idle beat.
+function playIdleAnim() {
+  const pet = state.pet;
+  if (!pet) return;
+  switch (petPersonality(pet)) {
+    case 'sleepyhead':
+      // briefly close the eyes + a floating "z z z", then restore the pose.
+      renderPetCustom({ mood: 'sleepy', tired: true });
+      reaction('💤');
+      clearTimeout(idleSleepyTimer);
+      idleSleepyTimer = setTimeout(() => { if (state.screen === 'pet' && !state.pet.sleeping) renderCurrentPet(); }, 1500);
+      break;
+    case 'glutton':
+      reaction('🤤');
+      bouncePet();
+      break;
+    case 'playful':
+      reaction('🎈');
+      bouncePet();
+      break;
+    case 'cuddly':
+      reaction('💕');
+      break;
+    case 'messy':
+      reaction('💨');
+      break;
+    case 'lazy':
+      reaction('😴');
+      break;
+    default:
+      bouncePet();
+  }
+}
+
+// Called every tick: fire an idle anim when due, or hold off while not idle.
+function updateIdleAnim() {
+  if (!petIsIdle()) { idleAnimAt = 0; return; }
+  if (idleAnimAt === 0) { scheduleIdleAnim(); return; }
+  if (Date.now() >= idleAnimAt) {
+    playIdleAnim();
+    scheduleIdleAnim();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // v4 — learning + death helpers
 // ---------------------------------------------------------------------------
 function isDead() {
@@ -469,19 +604,22 @@ function applyDecay(pet, dtSec) {
   const wounded = pet.hpCurrent < maxHp * 0.5; // <50% HP => happiness suffers faster
   // Starvation (§6): only after the egg has hatched and 2h since the last feed.
   const starving = pet.stage !== 'egg' && Date.now() - (pet.lastFedAt || 0) > STARVE_GRACE_MS;
-  // A poop on the floor makes hygiene decay 3× faster.
-  const hygMult = pet.poopInRoom ? 3 : 1;
+  // A poop on the floor makes hygiene decay 3× faster; v14B: Disordinato adds 1.4×.
+  const hygMult = (pet.poopInRoom ? 3 : 1) * (isPersona(pet, 'messy') ? MESSY_HYGIENE_MULT : 1);
   // v5 (§4): a dirty pet (hygiene < 35) loses happiness ~1.6× faster.
   const dirtyMult = c.hygiene < DIRTY_THRESHOLD ? DIRTY_DECAY_MULT : 1;
   // v7: a sick pet loses happiness ~2× faster (applied to awake decay only).
   const sickMult = pet.sick ? SICK_HAPPY_MULT : 1;
+  // v14B: Goloso gets hungry ~1.3× faster; Coccolone/Giocoso lose happiness a bit faster.
+  const hungerMult = isPersona(pet, 'glutton') ? GLUTTON_HUNGER_MULT : 1;
+  const personaHappyMult = personalityHappyDecayMult(pet);
   if (pet.sleeping) {
-    c.hunger -= DECAY_SLEEP.hunger * dtH;
+    c.hunger -= DECAY_SLEEP.hunger * dtH * hungerMult;
     c.hygiene -= DECAY_SLEEP.hygiene * dtH * hygMult;
     c.happiness += DECAY_SLEEP.happiness * dtH;
   } else {
-    c.hunger -= DECAY_AWAKE.hunger * dtH;
-    c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1) * dirtyMult * sickMult;
+    c.hunger -= DECAY_AWAKE.hunger * dtH * hungerMult;
+    c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1) * dirtyMult * sickMult * personaHappyMult;
     c.hygiene -= DECAY_AWAKE.hygiene * dtH * hygMult;
   }
   // neglect drags happiness down
@@ -506,7 +644,9 @@ function applyDecay(pet, dtSec) {
   if (pet.sick) {
     pet.hpCurrent = clamp(pet.hpCurrent, 1, maxHp);
   } else {
-    const healRate = pet.sleeping ? HEAL_RATE_SLEEP : HEAL_RATE_AWAKE;
+    // v14B: Dormiglione's sleep restores more HP (1.4× the sleeping heal rate).
+    const sleepHeal = HEAL_RATE_SLEEP * (isPersona(pet, 'sleepyhead') ? SLEEPY_SLEEP_HEAL_MULT : 1);
+    const healRate = pet.sleeping ? sleepHeal : HEAL_RATE_AWAKE;
     pet.hpCurrent = clamp(pet.hpCurrent + maxHp * healRate * dtH, 1, maxHp);
   }
   // v7/v14A (§5): illness onset. Only while hatched & not already sick: a
@@ -539,8 +679,11 @@ function applyDecay(pet, dtSec) {
     let guard = 0;
     while (toApply > 0 && guard < 240) { applySickStatPenalty(pet); toApply -= 1; guard += 1; }
   }
-  // stamina regen: ~1 per 30s (2x sleeping)
-  const rate = pet.sleeping ? 2 : 1;
+  // stamina regen: ~1 per 30s (2x sleeping). v14B: Pigro regens slower (0.75×);
+  // Dormiglione gets a small awake regen bonus (1.15×).
+  let rate = pet.sleeping ? 2 : 1;
+  if (isPersona(pet, 'lazy')) rate *= LAZY_STAMINA_MULT;
+  else if (isPersona(pet, 'sleepyhead') && !pet.sleeping) rate *= SLEEPY_STAMINA_MULT;
   pet.stamina = clamp(pet.stamina + (dtSec / 30) * rate, 0, pet.genome.maxStamina);
 }
 
@@ -591,6 +734,7 @@ export function tick(dtSec) {
   if (state.screen === 'pet') refreshBars();
   if (state.screen === 'train') refreshTrain();
   if (state.screen === 'menu') refreshMenu(); // live egg-cooldown countdown
+  updateIdleAnim(); // v14B: personality idle animation on the pet screen
   // periodic autosave (mutations also save explicitly)
   saveThrottle += dtSec;
   if (saveThrottle >= 8) {
@@ -645,7 +789,9 @@ function markAchievement() {
 // v6 — arm the next potty need ~30 min from now. Called after any relief:
 // hatch, a potty success, a floor cleanup, or a self-potty.
 function scheduleNextPoop(pet) {
-  pet.nextPoopAt = Date.now() + POOP_INTERVAL_MS;
+  // v14B: Disordinato needs the potty more often (shorter interval).
+  const mult = isPersona(pet, 'messy') ? MESSY_POOP_MULT : 1;
+  pet.nextPoopAt = Date.now() + POOP_INTERVAL_MS * mult;
 }
 
 // v6 — the 30-min poop timer + hidden grace. Runs every tick.
@@ -749,8 +895,11 @@ export function doFeedFood(key) {
   // Reduced hunger restore + a little HP and stamina back (clamped to max).
   const maxHp = computeStats(pet).hp;
   c.hunger = clamp(c.hunger + fd.hunger, 0, 100);
-  c.happiness = clamp(c.happiness + fd.happy, 0, 100);
-  pet.weight = clamp(pet.weight + fd.weight, 0, 100);
+  // v14B: Goloso gets a little extra happiness from food and puts on weight faster.
+  const glutton = isPersona(pet, 'glutton');
+  c.happiness = clamp(c.happiness + fd.happy + (glutton ? GLUTTON_FOOD_HAPPY : 0), 0, 100);
+  const wGain = fd.weight > 0 && glutton ? fd.weight * GLUTTON_WEIGHT_MULT : fd.weight;
+  pet.weight = clamp(pet.weight + wGain, 0, 100);
   pet.hpCurrent = clamp((pet.hpCurrent || 0) + fd.hp, 1, maxHp);
   pet.stamina = clamp(pet.stamina + fd.stamina, 0, pet.genome.maxStamina);
   // Same-food boredom streak (§2): same id increments, a different id resets.
@@ -780,12 +929,15 @@ export function doCuddle() {
   const pet = state.pet;
   const c = pet.care;
   pet.cuddleCount = (pet.cuddleCount || 0) + 1; // any cuddle counts (feeds 'cuddle' unlocks)
+  pet.lastCuddleAt = Date.now(); // v14B: resets the Coccolone idle-craving decay
+  // v14B: Coccolone gets extra happiness from every cuddle.
+  const cuddlyBonus = isPersona(pet, 'cuddly') ? CUDDLY_CUDDLE_HAPPY : 0;
   const deserved = pet.lastAchievementAt > 0 && Date.now() - pet.lastAchievementAt <= ACHIEVEMENT_WINDOW_MS;
   if (deserved) {
-    c.happiness = clamp(c.happiness + 15, 0, 100);
+    c.happiness = clamp(c.happiness + 15 + cuddlyBonus, 0, 100);
     toast(t('toast.cuddleDeserved', { name: pet.name }));
   } else {
-    c.happiness = clamp(c.happiness + 6, 0, 100);
+    c.happiness = clamp(c.happiness + 6 + cuddlyBonus, 0, 100);
     pet.spoiled = clamp(pet.spoiled + 8, 0, 100);
     toast(t('toast.cuddleSpoiled', { name: pet.name }));
   }
@@ -892,7 +1044,7 @@ export function doPlay() {
     toast(t('toast.playNotReady', { time: fmtDuration(playChargeRemaining(pet)) }));
     return;
   }
-  if (pet.playCharges >= PLAY_MAX_CHARGES) pet.playRefillAt = Date.now() + PLAY_REFILL_MS;
+  if (pet.playCharges >= PLAY_MAX_CHARGES) pet.playRefillAt = Date.now() + playRefillMs(pet);
   pet.playCharges--;
   if (pet.sleeping) pet.sleeping = false;
   scoldSadPose = false; // playing is an action — clear the scold sulk
@@ -909,7 +1061,7 @@ function refreshPlayCharges(pet) {
   const now = Date.now();
   while (pet.playCharges < PLAY_MAX_CHARGES && pet.playRefillAt && now >= pet.playRefillAt) {
     pet.playCharges++;
-    pet.playRefillAt = pet.playCharges < PLAY_MAX_CHARGES ? pet.playRefillAt + PLAY_REFILL_MS : 0;
+    pet.playRefillAt = pet.playCharges < PLAY_MAX_CHARGES ? pet.playRefillAt + playRefillMs(pet) : 0;
   }
 }
 // Milliseconds until the next play charge (0 if a charge is available now).
@@ -1002,7 +1154,8 @@ export function doTrain(name) {
   scoldSadPose = false;
   // Refusal (free): laziness + spoiled, tempered by education. A refusal puts the
   // pet ON STRIKE — ALL training locks for 5 min (clear early by scolding).
-  const refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
+  let refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
+  if (isPersona(pet, 'lazy')) refuseChance += LAZY_REFUSE_BONUS; // v14B: Pigro refuses more
   if (Math.random() < refuseChance) {
     pet.lastMisbehaviorAt = Date.now();
     pet.trainBlockUntil = Date.now() + TRAIN_BLOCK_MS;
@@ -1229,7 +1382,8 @@ function revealRps(choice, petChoice) {
     c.happiness = clamp(c.happiness + 6, 0, 100);
     msg = t('rps.tie');
   } else if (RPS_BEATS[choice] === petChoice) {
-    c.happiness = clamp(c.happiness + 12, 0, 100);
+    // v14B: Giocoso gets extra happiness from a play (RPS) win.
+    c.happiness = clamp(c.happiness + 12 + (isPersona(pet, 'playful') ? PLAYFUL_PLAY_HAPPY : 0), 0, 100);
     pet.rpsWins = (pet.rpsWins || 0) + 1; // feeds 'game' unlocks
     markAchievement();
     checkLearning(); // an RPS win may cross a 'game' unlock milestone
@@ -1295,6 +1449,14 @@ function renderInfo() {
   // Element line.
   const el = ELEMENTS.indexOf(pet.genome.element) >= 0 ? pet.genome.element : 'none';
   setText('info-element', `${elementIcon(el)} ${elementLabel(el)}`);
+
+  // v14B — Personality line (emoji + localized name; description as a tooltip).
+  const persona = petPersonality(pet);
+  const personaEl = $('info-personality');
+  if (personaEl) {
+    personaEl.textContent = `${PERSONALITY_EMOJI[persona] || '🎲'} ${t('personality.' + persona)}`;
+    personaEl.title = t('personality.' + persona + '.desc');
+  }
 
   // Moveset: known moves highlighted, locked ones show an unlock hint.
   const movesEl = $('info-moves');
@@ -2301,7 +2463,7 @@ export function initGame() {
 
   // shop navigation + notifications toggle
   bindClick('btn-shop', () => showScreen('shop'));
-  bindClick('btn-shop-back', () => showScreen('menu'));
+  bindClick('btn-shop-back', () => showScreen('pet'));
   bindClick('btn-daily-coin', doClaimDailyCoins);
   bindClick('btn-buy-cure', doBuyCure);
   bindClick('btn-buy-stamina', doBuyStamina);

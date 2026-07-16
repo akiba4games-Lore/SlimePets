@@ -90,6 +90,21 @@ const en = {
   'trait.maxStamina': 'MAX ⚡',
   'trait.laziness': 'LAZINESS',
 
+  // personality (v14B)
+  'info.personality': 'Personality',
+  'personality.lazy': 'Lazy',
+  'personality.glutton': 'Glutton',
+  'personality.cuddly': 'Cuddly',
+  'personality.playful': 'Playful',
+  'personality.messy': 'Messy',
+  'personality.sleepyhead': 'Sleepyhead',
+  'personality.lazy.desc': 'Often refuses to train and recovers stamina slowly.',
+  'personality.glutton.desc': 'Gets hungry faster, loves food, and gains weight easily.',
+  'personality.cuddly.desc': 'Loves cuddles; gets sad faster when left alone.',
+  'personality.playful.desc': 'Loves to play; play charges refill faster.',
+  'personality.messy.desc': 'Gets dirty quickly and needs the potty more often.',
+  'personality.sleepyhead.desc': 'Dozes off often; sleep restores more.',
+
   // training screen
   'train.title': 'Training',
   'train.subtitle': 'Build up those stats!',
@@ -448,6 +463,21 @@ const it = {
   'trait.maxStamina': 'MAX ⚡',
   'trait.laziness': 'PIGRIZIA',
 
+  // personality (v14B)
+  'info.personality': 'Personalità',
+  'personality.lazy': 'Pigro',
+  'personality.glutton': 'Goloso',
+  'personality.cuddly': 'Coccolone',
+  'personality.playful': 'Giocoso',
+  'personality.messy': 'Disordinato',
+  'personality.sleepyhead': 'Dormiglione',
+  'personality.lazy.desc': 'Spesso rifiuta di allenarsi e recupera energia lentamente.',
+  'personality.glutton.desc': 'Ha fame più in fretta, adora il cibo e ingrassa facilmente.',
+  'personality.cuddly.desc': 'Adora le coccole; si rattrista prima se lasciato solo.',
+  'personality.playful.desc': 'Adora giocare; le cariche di gioco si ricaricano più in fretta.',
+  'personality.messy.desc': 'Si sporca in fretta e ha bisogno del bagno più spesso.',
+  'personality.sleepyhead.desc': 'Si addormenta spesso; il sonno ristora di più.',
+
   'train.title': 'Allenamento',
   'train.subtitle': 'Potenzia le statistiche!',
   'train.stamina': 'Energia',
@@ -796,6 +826,21 @@ const ja = {
   'life.spoiled': 'わがまま',
   'trait.maxStamina': 'MAX ⚡',
   'trait.laziness': 'なまけ',
+
+  // personality (v14B)
+  'info.personality': 'せいかく',
+  'personality.lazy': 'なまけもの',
+  'personality.glutton': 'くいしんぼう',
+  'personality.cuddly': 'あまえんぼう',
+  'personality.playful': 'あそびずき',
+  'personality.messy': 'ずぼら',
+  'personality.sleepyhead': 'ねぼすけ',
+  'personality.lazy.desc': 'トレーニングを よくいやがり、スタミナの かいふくが おそい。',
+  'personality.glutton.desc': 'おなかが すきやすく、たべものが だいすきで ふとりやすい。',
+  'personality.cuddly.desc': 'だっこが だいすき。ひとりにされると はやく さみしくなる。',
+  'personality.playful.desc': 'あそぶのが だいすき。あそびチャージの かいふくが はやい。',
+  'personality.messy.desc': 'すぐ よごれて、トイレの かいすうも おおい。',
+  'personality.sleepyhead.desc': 'よく いねむりする。すいみんで よぶんに かいふくする。',
 
   'train.title': 'トレーニング',
   'train.subtitle': 'ステータスを きたえよう！',

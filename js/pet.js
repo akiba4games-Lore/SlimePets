@@ -85,6 +85,27 @@ function deriveColor(element, cj) {
   return { hue, hue2, sat, light };
 }
 
+// ---------------------------------------------------------------------------
+// Personality (DESIGN v14 §14B). One of six flavors, assigned deterministically
+// from the seed via a DEDICATED stream (like colorStream) so it never perturbs
+// the genome part/color/element sequence — a given seed keeps every genome field
+// byte-identical whether or not personality existed. It lives on the PET object
+// (pet.personality), not the genome; battleSnapshot doesn't need it.
+// ---------------------------------------------------------------------------
+export const PERSONALITIES = ['lazy', 'glutton', 'cuddly', 'playful', 'messy', 'sleepyhead'];
+
+// Dedicated personality jitter stream (independent of the part-picking rng, the
+// color stream and the learnset stream). Deterministic from seed.
+function personalityStream(seed) {
+  return mulberry32(((seed >>> 0) ^ 0x9e3779b9) >>> 0);
+}
+
+// Pick a personality deterministically from a seed (same seed → same result).
+export function derivePersonality(seed) {
+  const rng = personalityStream(seed >>> 0);
+  return PERSONALITIES[Math.floor(rng() * PERSONALITIES.length) % PERSONALITIES.length];
+}
+
 function pick(rng, arr) {
   return arr[Math.floor(rng() * arr.length)];
 }
@@ -684,9 +705,11 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 13,
+    version: 14,
     name: (name && String(name).trim()) || 'Slime',
     genome,
+    // v14B (§14B) — personality, deterministic from the seed (separate stream).
+    personality: derivePersonality(seed),
     stage: 'egg',
     createdAt: now,
     lastTick: now,
@@ -704,6 +727,9 @@ export function createPet(name, seed) {
     healRefillAt: 0, // ms of the next heal-charge refill (0 = full)
     playCharges: 3, // 🎈 Play (RPS) charges; refills 1 / 5 min up to 3 (v12)
     playRefillAt: 0, // ms of the next play-charge refill (0 = full)
+    // v14B — Clean (🫧) charges: 3, +1 every 5 min (max 3), like Heal/Play/Battle.
+    cleanCharges: 3,
+    cleanRefillAt: 0, // ms of the next clean-charge refill (0 = full)
     // v14A (§3) — battle charges: 3, +1 every 5 min (max 3). Wild/rival battles
     // consume 1 to start; local QR PvP is never gated.
     battleCharges: 3,
@@ -737,6 +763,7 @@ export function createPet(name, seed) {
     // v11 counters — feed the new unlock condition types (scold/cuddle/game/healed/losses).
     scoldCount: 0, // valid scolds
     cuddleCount: 0, // cuddles given
+    lastCuddleAt: now, // v14B: ms of last cuddle (feeds the Coccolone idle-craving decay)
     rpsWins: 0, // Rock-Paper-Scissors wins
     totalHealed: 0, // lifetime HP restored by heals (Heal / Cure Potion / in-battle)
     battleLosses: 0, // battles lost
@@ -962,7 +989,10 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 13;
+  pet.version = 14;
+  // v14B (§14B) — personality: keep a valid stored value, else fall back to the
+  // seed-derived one (so pre-v14B saves gain a deterministic personality).
+  if (PERSONALITIES.indexOf(pet.personality) < 0) pet.personality = derivePersonality(genome.seed);
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -994,6 +1024,10 @@ export function deserializePet(obj) {
   if (typeof pet.playCharges !== 'number' || !isFinite(pet.playCharges)) pet.playCharges = 3;
   pet.playCharges = Math.max(0, Math.min(3, Math.floor(pet.playCharges)));
   if (typeof pet.playRefillAt !== 'number' || !isFinite(pet.playRefillAt)) pet.playRefillAt = 0;
+  // v14B — Clean (🫧) charges: 3, +1 every 5 min. Default 3/0 for older saves.
+  if (typeof pet.cleanCharges !== 'number' || !isFinite(pet.cleanCharges)) pet.cleanCharges = 3;
+  pet.cleanCharges = Math.max(0, Math.min(3, Math.floor(pet.cleanCharges)));
+  if (typeof pet.cleanRefillAt !== 'number' || !isFinite(pet.cleanRefillAt)) pet.cleanRefillAt = 0;
   // v14A (§3) — battle charges: 3, +1 every 5 min. Default 3/0 for older saves.
   if (typeof pet.battleCharges !== 'number' || !isFinite(pet.battleCharges)) pet.battleCharges = 3;
   pet.battleCharges = Math.max(0, Math.min(3, Math.floor(pet.battleCharges)));
@@ -1022,6 +1056,8 @@ export function deserializePet(obj) {
   // v11 counters (default 0 for older saves).
   pet.scoldCount = Math.max(0, Math.floor(num(pet.scoldCount, 0)));
   pet.cuddleCount = Math.max(0, Math.floor(num(pet.cuddleCount, 0)));
+  // v14B: last-cuddle timestamp (default now so migrated pets aren't instantly "ignored").
+  pet.lastCuddleAt = num(pet.lastCuddleAt, now);
   pet.rpsWins = Math.max(0, Math.floor(num(pet.rpsWins, 0)));
   pet.totalHealed = Math.max(0, num(pet.totalHealed, 0));
   pet.battleLosses = Math.max(0, Math.floor(num(pet.battleLosses, 0)));

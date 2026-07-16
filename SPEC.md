@@ -265,5 +265,16 @@ Serialization `version` → **12**; `deserializePet` migrates the new fields (`p
 - **Centered training-animation modal:** `playTrainingAnim`/`playRefuseAnim` now play inside a full-screen fixed overlay (`#train-anim-overlay`, `rgba(0,0,0,0.5)` backdrop, high z-index) with the pet centered; auto-dismisses (~2.6s / ~2.2s), tap-backdrop dismisses early.
 - **i18n:** all new strings in EN + IT + JA.
 
+## v14B — personality (see DESIGN_v14.md §14B)
+
+Serialization `version` → **14**; `deserializePet` migrates the new fields (`personality` falls back to the seed-derived value if missing/invalid; `lastCuddleAt` defaults to now).
+
+- **Personality (pet.js):** every pet has `pet.personality` — one of `lazy`/`glutton`/`cuddly`/`playful`/`messy`/`sleepyhead` — assigned deterministically from the seed via a **dedicated stream** (`personalityStream`, XOR `0x9e3779b9`, exposed as `derivePersonality(seed)`), independent of the genome part/color/learnset streams so a seed's genome (parts/colors/element) stays byte-identical. It lives on the PET object, not the genome; `battleSnapshot` does not carry it.
+- **Personality modifiers (game.js):** modest, flavor-only tweaks (a pet matching no branch keeps the pre-14B baseline). Constants: Pigro `LAZY_REFUSE_BONUS=+0.15` train-refusal, `LAZY_STAMINA_MULT=0.75`; Goloso `GLUTTON_HUNGER_MULT=1.3`, `GLUTTON_FOOD_HAPPY=+3`, `GLUTTON_WEIGHT_MULT=1.3` (food gain only); Coccolone `CUDDLY_CUDDLE_HAPPY=+4`, `CUDDLY_IGNORE_MULT=1.25` after `CUDDLY_IGNORE_MS=30min` since `lastCuddleAt`; Giocoso `PLAYFUL_PLAY_HAPPY=+3`, `PLAYFUL_HAPPY_MULT=1.1`, `PLAYFUL_REFILL_MS=3.5min` (via `playRefillMs(pet)`); Disordinato `MESSY_HYGIENE_MULT=1.4`, `MESSY_POOP_MULT=0.7` (shorter poop interval); Dormiglione `SLEEPY_SLEEP_HEAL_MULT=1.4`, `SLEEPY_STAMINA_MULT=1.15` (awake). Read via `isPersona(pet, id)` / `petPersonality(pet)`.
+- **Idle animations (game.js):** on the pet screen, when idle (not egg/dead/sleeping, no scold-sulk, no open sheet/popup/panel/overlay), `updateIdleAnim()` (called each tick) fires a short personality-flavored beat every ~15–30s (`IDLE_ANIM_MIN_MS`/`MAX_MS`) via `reaction()`/`bouncePet()` and, for Dormiglione, a brief sleepy render + `💤`. Resets its timer whenever the pet leaves the idle state.
+- **Info panel:** a **Personality** line (`#info-personality`, `info.personality`) shows the emoji + localized name; the localized description is the element's `title`.
+- **i18n:** 6 names + 6 descriptions + `info.personality` in EN + IT + JA (Disordinato/Dormiglione are the nicer names for messy/sleepyhead).
+- **Also (14B housekeeping):** shop **Back** (`#btn-shop-back`) now routes to the pet home; RPS `#rps-countdown` centered + enlarged (~100px) with a translucent disc; RPS reveal icons enlarged to 48px.
+
 ## Style
 Pastel palette from genome hue (HSL: body `hsl(hue 70% 80%)`, darker outline same hue, accent hue2). Big glossy eyes with white highlights, blush circles, tiny mouth. Idle bounce/squish animation (CSS or SVG transform). Everything cute — think Kirby/slime mascots.
