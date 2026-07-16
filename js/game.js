@@ -135,6 +135,12 @@ const EXERCISES = {
 // Training-refusal flavor lines live in i18n as lazy.0 … lazy.(N-1).
 const LAZY_LINE_COUNT = 6;
 
+// v14C — laziness (0..1) drifts UP while the pet doesn't train and DOWN a little
+// with each completed session. The per-session drop is tiny (invisible at the
+// 2-decimal display) by design; idle time is what really pushes it up.
+const LAZY_GROWTH_PER_DAY = 0.5; // laziness gained per full idle day
+const LAZY_TRAIN_DROP = 0.005;   // laziness lost per completed training
+
 // v5 — Food economy (§2). Foods now COST coins, give LESS hunger and restore a
 // little HP + stamina (clamped to max); sweets add happiness. Effects:
 // cost (coins) / hunger / hp / stamina / weight / happy.
@@ -629,6 +635,10 @@ function applyDecay(pet, dtSec) {
   c.hygiene = clamp(c.hygiene, 0, 100);
   // v3 lifestyle drifts: spoiled fades, weight eases back toward its baseline.
   pet.spoiled = clamp((pet.spoiled || 0) - SPOILED_DECAY_PER_H * dtH, 0, 100);
+  // v14C: laziness slowly climbs while the pet isn't training (+0.5 per idle day).
+  if (pet.stage !== 'egg' && pet.genome) {
+    pet.genome.laziness = clamp((pet.genome.laziness || 0) + LAZY_GROWTH_PER_DAY * (dtH / 24), 0, 1);
+  }
   if (starving) {
     // Starvation weight drain overrides the normal drift and applies even while
     // asleep — a neglected pet keeps wasting away.
@@ -1194,6 +1204,8 @@ export function doTrain(name) {
     save();
     return;
   }
+  // v14C: a completed session (special or normal) makes the pet a bit less lazy.
+  pet.genome.laziness = clamp((pet.genome.laziness || 0) - LAZY_TRAIN_DROP, 0, 1);
   // v10: Special training — a high-cost gamble that teaches a random move.
   // Cost: 100 stamina + halve happiness + halve HP (floor 1). No stat gain —
   // the move IS the reward.
@@ -1243,8 +1255,12 @@ export function doTrain(name) {
   bouncePet();
   const shown = gain.toFixed(2);
   // v14C: two-line result text inside the animation overlay (below the pet),
-  // "{name} ha fatto {ex}\n+{amount} {stat}" — appears halfway through the anim.
-  playTrainingAnim(name, t('train.result', { name: pet.name, ex: t('train.' + name.toLowerCase()), amount: shown, stat: ex.label }));
+  // appears halfway through the anim. The trained stat is rendered in pink.
+  playTrainingAnim(name, {
+    headline: t('train.result', { name: pet.name, ex: t('train.' + name.toLowerCase()) }),
+    amount: shown,
+    stat: ex.label,
+  });
   if (leveled > 0) setTimeout(() => toast(t('toast.reachedLevel', { name: pet.name, level: pet.level })), 700);
   // Level up, a completed session, and possible weight loss can all unlock moves.
   setTimeout(checkLearning, leveled > 0 ? 1100 : 400);
@@ -1834,11 +1850,25 @@ function playTrainingAnim(name, message) {
   clearTimeout(trainAnimTimer);
   if (message && txt) {
     trainTextTimer = setTimeout(() => {
-      txt.textContent = message;
+      renderTrainText(txt, message);
       txt.classList.add('show');
     }, 1800); // ~halfway through the 3.6s animation
   }
   trainAnimTimer = setTimeout(hideTrainOverlay, 3600); // v14C: 1s longer
+}
+
+// Populate the result text. A plain string (Special) is shown as-is; a
+// {headline, amount, stat} object renders two lines with the trained stat in
+// pink (matching the +STAT labels) and a couple of exclamation marks. Built via
+// DOM (not innerHTML) so the pet name can't inject markup.
+function renderTrainText(txt, message) {
+  txt.textContent = '';
+  if (typeof message === 'string') { txt.textContent = message; return; }
+  txt.appendChild(document.createTextNode(`${message.headline}\n+${message.amount} `));
+  const statEl = document.createElement('span');
+  statEl.className = 'train-anim-stat';
+  statEl.textContent = `${message.stat}!!`;
+  txt.appendChild(statEl);
 }
 
 // v11: on a training refusal the pet trots on, shakes its head "no no" (angry

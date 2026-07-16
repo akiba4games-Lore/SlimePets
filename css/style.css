@@ -1137,6 +1137,8 @@ body {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 .train-anim-text.show { opacity: 1; transform: translateY(0); }
+/* Trained stat in pink, matching the +STAT labels on the training screen. */
+.train-anim-stat { color: var(--pink-d); }
 /* In the overlay the stage is a fixed-width centered card (its children are
    absolutely positioned, so it needs an explicit width to not collapse). */
 .train-anim-overlay .train-stage {
