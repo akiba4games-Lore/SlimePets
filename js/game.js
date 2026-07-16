@@ -1181,9 +1181,14 @@ export function doTrain(name) {
     toast(t('toast.trainBlocked', { name: pet.name, time: fmtDuration(pet.trainBlockUntil - Date.now()) }));
     return;
   }
-  // Basics cost a flat 20 stamina up front; Special drains the WHOLE bar on use
-  // (no minimum) and is instead limited to once per day (checked above).
-  if (!isSpecial && pet.stamina < TRAIN_STAMINA_COST) {
+  // Basics cost a flat 20 stamina up front. Special REQUIRES a full bar (it then
+  // drains all of it) and is also limited to once per day (checked above).
+  if (isSpecial) {
+    if (pet.stamina < pet.genome.maxStamina - 0.01) {
+      toast(t('toast.specialNeedFull', { name: pet.name }));
+      return;
+    }
+  } else if (pet.stamina < TRAIN_STAMINA_COST) {
     toast(t('toast.tooTired', { name: pet.name }));
     return;
   }
@@ -1791,10 +1796,12 @@ function refreshTrain() {
   document.querySelectorAll('.exercise').forEach((btn) => {
     if (btn.dataset.ex === 'Special') {
       // v11: Special needs child+, drains the whole bar, and is once-per-day.
+      // v14C: it also requires a FULL stamina bar.
       const lockedStage = stageIdx < STAGE_ORDER.indexOf('child');
       const sinceSpecial = Date.now() - (pet.lastSpecialAt || 0);
       const usedToday = sinceSpecial < ONE_DAY_MS;
-      btn.classList.toggle('disabled', blocked || lockedStage || usedToday);
+      const notFull = pet.stamina < pet.genome.maxStamina - 0.01;
+      btn.classList.toggle('disabled', blocked || lockedStage || usedToday || notFull);
       // Cost label reflects the once-a-day gate (remaining time when spent).
       const costEl = btn.querySelector('.ex-cost');
       if (costEl) costEl.textContent = usedToday
