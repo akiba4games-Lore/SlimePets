@@ -374,11 +374,12 @@ body {
   font-size: 26px;
   opacity: 0;
 }
-.train-stage.perform #train-svg { animation: train-perform 2.6s ease-in-out; }
-.train-stage.perform .train-emoji { animation: train-emoji 2.6s ease-in-out; }
+/* v14C: slowed by 1s so the whole scene (text included) lasts a second longer. */
+.train-stage.perform #train-svg { animation: train-perform 3.6s ease-in-out; }
+.train-stage.perform .train-emoji { animation: train-emoji 3.6s ease-in-out; }
 /* v11: refusal — pet trots on, shakes its head "no no", trots off */
-.train-stage.refuse #train-svg { animation: train-refuse 2.2s ease-in-out; }
-.train-stage.refuse .train-emoji { animation: train-emoji 2.2s ease-in-out; }
+.train-stage.refuse #train-svg { animation: train-refuse 3.2s ease-in-out; }
+.train-stage.refuse .train-emoji { animation: train-emoji 3.2s ease-in-out; }
 @keyframes train-refuse {
   0%   { transform: translateX(-280%) rotate(0deg); }
   18%  { transform: translateX(-50%) rotate(0deg); }
@@ -1110,12 +1111,30 @@ body {
   inset: 0;
   z-index: 150;
   display: none;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   background: rgba(0, 0, 0, 0.5);
   padding: 20px;
 }
 .train-anim-overlay.open { display: flex; }
+/* Training result text — sits just below the animation stage, above the backdrop. */
+.train-anim-text {
+  max-width: min(320px, 88vw);
+  text-align: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
+  padding: 8px 16px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.train-anim-text.show { opacity: 1; transform: translateY(0); }
 /* In the overlay the stage is a fixed-width centered card (its children are
    absolutely positioned, so it needs an explicit width to not collapse). */
 .train-anim-overlay .train-stage {

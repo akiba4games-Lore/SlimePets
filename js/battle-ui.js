@@ -393,8 +393,6 @@ function renderMenu() {
   rivalsBtn.onclick = openRivals;
   wrap.appendChild(rivalsBtn);
 
-  wrap.appendChild(el('h2', null, t('battle.title')));
-
   // ⚔️ Battaglia panel — the battle-charge limit on top, then Selvaggia (wild)
   // and Locale (opens the QR local sub-screen).
   const battleCard = el('div', 'bui-card');

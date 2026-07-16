@@ -1207,9 +1207,12 @@ export function doTrain(name) {
     markAchievement();
     reaction('🌟');
     bouncePet();
-    playTrainingAnim('Special');
+    // v14C: show the Special result inside the animation overlay (below the pet).
+    const specialMsg = learned
+      ? t('toast.specialLearned', { name: pet.name, icon: elementIcon(learned.element), move: learned.name })
+      : t('train.special');
+    playTrainingAnim('Special', specialMsg);
     if (learned) {
-      toast(t('toast.specialLearned', { name: pet.name, icon: elementIcon(learned.element), move: learned.name }));
       // If the new move couldn't auto-equip (all 4 slots full), hint the player.
       const eq = Array.isArray(pet.equipped) ? pet.equipped : [];
       if (eq.indexOf(learned.id) < 0) {
@@ -1238,9 +1241,10 @@ export function doTrain(name) {
   markAchievement(); // a completed session counts as an achievement
   reaction(ex.emoji);
   bouncePet();
-  playTrainingAnim(name); // pet trots on, works out, trots off (v5.1)
   const shown = Math.max(1, Math.round(gain * 10) / 10);
-  toast(t('toast.trained', { name: pet.name, ex: t('train.' + name.toLowerCase()), amount: shown, stat: ex.label }));
+  // v14C: the training result text now shows inside the animation overlay
+  // (just below the pet), not as a bottom toast.
+  playTrainingAnim(name, t('toast.trained', { name: pet.name, ex: t('train.' + name.toLowerCase()), amount: shown, stat: ex.label }));
   if (leveled > 0) setTimeout(() => toast(t('toast.reachedLevel', { name: pet.name, level: pet.level })), 700);
   // Level up, a completed session, and possible weight loss can all unlock moves.
   setTimeout(checkLearning, leveled > 0 ? 1100 : 400);
@@ -1800,12 +1804,14 @@ function hideTrainOverlay() {
   if (ov) ov.classList.remove('open');
   const stage = $('train-stage');
   if (stage) stage.classList.remove('perform', 'refuse', 'show');
+  const txt = $('train-anim-text');
+  if (txt) { txt.classList.remove('show'); txt.textContent = ''; }
 }
 
 // v5.1: on a successful session, the pet trots onto the (now centered) stage,
 // does a few workout reps, then trots off. Purely cosmetic (CSS-driven).
 let trainAnimTimer = 0;
-function playTrainingAnim(name) {
+function playTrainingAnim(name, message) {
   const stage = $('train-stage');
   const svg = $('train-svg');
   const pet = state.pet;
@@ -1814,12 +1820,18 @@ function playTrainingAnim(name) {
   const emo = $('train-emoji');
   const ex = EXERCISES[name];
   if (emo) emo.textContent = name === 'Special' ? '🌟' : (ex ? ex.emoji : '💪');
+  // Result text just below the animation (inside the overlay, above the backdrop).
+  const txt = $('train-anim-text');
+  if (txt) {
+    txt.textContent = message || '';
+    txt.classList.toggle('show', !!message);
+  }
   showTrainOverlay();
   stage.classList.remove('perform');
   void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
   stage.classList.add('show', 'perform');
   clearTimeout(trainAnimTimer);
-  trainAnimTimer = setTimeout(hideTrainOverlay, 2600);
+  trainAnimTimer = setTimeout(hideTrainOverlay, 3600); // v14C: 1s longer
 }
 
 // v11: on a training refusal the pet trots on, shakes its head "no no" (angry
@@ -1838,7 +1850,7 @@ function playRefuseAnim() {
   void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
   stage.classList.add('show', 'refuse');
   clearTimeout(refuseAnimTimer);
-  refuseAnimTimer = setTimeout(hideTrainOverlay, 2200);
+  refuseAnimTimer = setTimeout(hideTrainOverlay, 3200); // v14C: 1s longer
 }
 
 // ---------------------------------------------------------------------------
@@ -2213,8 +2225,49 @@ function doImportPet() {
 // ---------------------------------------------------------------------------
 // v5 — Shop (§6)
 // ---------------------------------------------------------------------------
+// v14C — buyable shop items (Daily Coins stays a separate free-claim card).
+// Tapping one opens a description + confirm popup, like the food picker; only
+// Confirm runs the actual buy. Reroll opens its own move picker instead.
+function shopItems() {
+  return [
+    { id: 'cure', emoji: '❤️', cost: CURE_COST, nameKey: 'shop.curePotion', descKey: 'shop.curePotionDesc', buy: doBuyCure },
+    { id: 'stamina', emoji: '⚡', cost: STAMINA_POTION_COST, nameKey: 'shop.staminaPotion', descKey: 'shop.staminaPotionDesc', buy: doBuyStamina },
+    { id: 'syringe', emoji: '💉', cost: SYRINGE_COST, nameKey: 'shop.syringe', descKey: 'shop.syringeDesc', buy: doBuySyringe },
+    { id: 'reroll', emoji: '🎲', cost: REROLL_COST, nameKey: 'shop.reroll', descKey: 'shop.rerollDesc', pick: openRerollPicker },
+  ];
+}
+
+let shopGridLang = null; // rebuild the grid on first open and on a language switch
+function renderShopGrid() {
+  const grid = $('shop-grid');
+  if (!grid) return;
+  if (grid.children.length && shopGridLang === getLang()) return; // already built for this lang
+  shopGridLang = getLang();
+  grid.innerHTML = shopItems()
+    .map((it) => `<button class="food-item" data-shop="${it.id}"><span class="f-ico">${it.emoji}</span><span class="f-name">${t(it.nameKey)}</span><span class="f-price">🪙 ${it.cost}</span></button>`)
+    .join('');
+  grid.querySelectorAll('[data-shop]').forEach((btn) => {
+    btn.addEventListener('click', () => openShopConfirm(btn.dataset.shop));
+  });
+}
+
+// Tapping a shop item: reroll opens its move picker; everything else shows a
+// description + price confirm popup and only buys on Confirm.
+function openShopConfirm(id) {
+  const it = shopItems().find((x) => x.id === id);
+  if (!it) return;
+  if (it.pick) { it.pick(); return; }
+  openConfirm({
+    title: t('confirm.buyTitle', { item: t(it.nameKey) }),
+    emoji: it.emoji,
+    lines: [t(it.descKey), t('confirm.price', { coins: it.cost })],
+    onConfirm: it.buy,
+  });
+}
+
 function refreshShop() {
   const pet = state.pet;
+  renderShopGrid();
   const c = $('shop-coins');
   if (c) c.textContent = `🪙 ${(pet && pet.coins) || 0}`;
   // v14A (§2): Daily Coins button — "Claim 50 🪙" when ready, else a countdown.
@@ -2514,10 +2567,8 @@ export function initGame() {
   bindClick('btn-shop', () => showScreen('shop'));
   bindClick('btn-shop-back', () => showScreen('pet'));
   bindClick('btn-daily-coin', doClaimDailyCoins);
-  bindClick('btn-buy-cure', doBuyCure);
-  bindClick('btn-buy-stamina', doBuyStamina);
-  bindClick('btn-buy-syringe', doBuySyringe);
-  bindClick('btn-buy-reroll', openRerollPicker);
+  // Buyable items are rendered as a grid (renderShopGrid) and routed through a
+  // description+confirm popup; no per-button bindings needed here anymore.
   bindClick('btn-notify', requestNotifications);
   bindClick('reroll-close', () => closeSheet('reroll-sheet'));
   bindSheetBackdrop('reroll-sheet');

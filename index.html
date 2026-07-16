@@ -201,26 +201,8 @@
         <div class="shop-info"><span class="shop-name" data-i18n="shop.daily">Daily Coins</span><span class="shop-desc" data-i18n="shop.dailyDesc">Free coins once a day</span></div>
         <button id="btn-daily-coin" class="shop-buy">🪙 +50</button>
       </div>
-      <div class="shop-card">
-        <span class="shop-ico">❤️</span>
-        <div class="shop-info"><span class="shop-name" data-i18n="shop.curePotion">Cure Potion</span><span class="shop-desc" data-i18n="shop.curePotionDesc">Fully restores HP</span></div>
-        <button id="btn-buy-cure" class="shop-buy">🪙 30</button>
-      </div>
-      <div class="shop-card">
-        <span class="shop-ico">⚡</span>
-        <div class="shop-info"><span class="shop-name" data-i18n="shop.staminaPotion">Stamina Potion</span><span class="shop-desc" data-i18n="shop.staminaPotionDesc">Fully restores stamina</span></div>
-        <button id="btn-buy-stamina" class="shop-buy">🪙 30</button>
-      </div>
-      <div class="shop-card">
-        <span class="shop-ico">💉</span>
-        <div class="shop-info"><span class="shop-name" data-i18n="shop.syringe">Syringe</span><span class="shop-desc" data-i18n="shop.syringeDesc">Cures illness</span></div>
-        <button id="btn-buy-syringe" class="shop-buy">🪙 50</button>
-      </div>
-      <div class="shop-card">
-        <span class="shop-ico">🎲</span>
-        <div class="shop-info"><span class="shop-name" data-i18n="shop.reroll">Ability Reroll</span><span class="shop-desc" data-i18n="shop.rerollDesc">Reroll one learned move</span></div>
-        <button id="btn-buy-reroll" class="shop-buy">🪙 200</button>
-      </div>
+      <!-- Buyable items: tapping one opens a description + confirm popup (like food). -->
+      <div id="shop-grid" class="food-grid"></div>
       <button id="btn-shop-back" class="big-btn" data-i18n="shop.back">⬅ Back</button>
     </div>
   </section>
@@ -296,6 +278,8 @@
       <span id="train-emoji" class="train-emoji">💪</span>
       <svg id="train-svg" viewBox="0 0 200 200" aria-hidden="true"></svg>
     </div>
+    <!-- Training result text: just below the animation, above the dark backdrop. -->
+    <div id="train-anim-text" class="train-anim-text" aria-hidden="true"></div>
   </div>
 
   <!-- RPS 3-2-1 countdown — app-level so it sits midway between the pet and the screen bottom -->
