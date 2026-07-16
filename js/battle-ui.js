@@ -370,8 +370,9 @@ function applyBattleRewardsAndCost(won, info) {
 
 // ---- menu -------------------------------------------------------------------
 
-// v12 — the battle tab is a HUB: three big buttons (Random / Local / Prep) plus
-// a Rivals button in the TOP-RIGHT corner. Each hub button opens its own view.
+// v14C — the battle tab is a HUB with TWO entries: ⚔️ Battaglia (wild + local
+// sub-panel) and 🎒 Preparazione (change moves), plus a Rivals button in the
+// TOP-RIGHT corner. Each hub entry opens its own sub-panel.
 function renderMenu() {
   currentRerender = renderMenu;
   const root = qs('screen-battle');
@@ -388,6 +389,31 @@ function renderMenu() {
 
   wrap.appendChild(el('h2', null, t('battle.title')));
 
+  const battleBtn = el('button', 'bui-btn', t('battle.hubBattle'));
+  battleBtn.onclick = openBattlePanel;
+
+  const prepBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.hubPrep'));
+  prepBtn.onclick = openPrepPanel;
+
+  wrap.appendChild(battleBtn);
+  wrap.appendChild(prepBtn);
+  root.appendChild(wrap);
+}
+
+// v14C — the "Battaglia" sub-panel: the battle-charge limit on top, then two
+// buttons — Selvaggia (wild battle) and Locale (the local QR panel) — plus a
+// Back-to-hub button.
+function openBattlePanel() {
+  currentRerender = openBattlePanel;
+  ensureStyles();
+  cleanupLinkScreen();
+  goToScreen('battle');
+  const root = qs('screen-battle');
+  if (!root) return;
+  root.innerHTML = '';
+  const wrap = el('div', 'bui-menu');
+  wrap.appendChild(el('h2', null, t('battle.hubBattle')));
+
   // v14A (§3): remaining battle charges (wild/rival cost 1 each; +1 / 5 min).
   if (window.SlimeGame && typeof window.SlimeGame.getBattleCharges === 'function') {
     try {
@@ -398,18 +424,42 @@ function renderMenu() {
     }
   }
 
-  const randomBtn = el('button', 'bui-btn', t('battle.hub.random'));
-  randomBtn.onclick = startWildBattle;
+  const wildBtn = el('button', 'bui-btn', t('battle.wildShort'));
+  wildBtn.onclick = startWildBattle;
 
-  const localBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.hub.local'));
+  const localBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.localShort'));
   localBtn.onclick = openLocalPanel;
 
-  const prepBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.hub.prep'));
-  prepBtn.onclick = () => goToScreen('moves');
+  const backBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.back'));
+  backBtn.onclick = openMenu;
 
-  wrap.appendChild(randomBtn);
+  wrap.appendChild(wildBtn);
   wrap.appendChild(localBtn);
-  wrap.appendChild(prepBtn);
+  wrap.appendChild(backBtn);
+  root.appendChild(wrap);
+}
+
+// v14C — the "Preparazione" sub-panel: a single Cambia Mosse button that opens
+// the moves-equip screen, plus a Back-to-hub button.
+function openPrepPanel() {
+  currentRerender = openPrepPanel;
+  ensureStyles();
+  cleanupLinkScreen();
+  goToScreen('battle');
+  const root = qs('screen-battle');
+  if (!root) return;
+  root.innerHTML = '';
+  const wrap = el('div', 'bui-menu');
+  wrap.appendChild(el('h2', null, t('battle.hubPrep')));
+
+  const movesBtn = el('button', 'bui-btn', t('battle.changeMoves'));
+  movesBtn.onclick = () => goToScreen('moves');
+
+  const backBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.back'));
+  backBtn.onclick = openMenu;
+
+  wrap.appendChild(movesBtn);
+  wrap.appendChild(backBtn);
   root.appendChild(wrap);
 }
 

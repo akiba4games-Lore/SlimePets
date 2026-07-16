@@ -79,9 +79,9 @@ const CLEAN_MAX_CHARGES = 3;           // up to 3 charges stored
 export const GAME_VERSION = 'v0.14b';
 const CHANGELOG = [
   { version: 'v0.14b', items: [{
-    en: 'Pets now have a PERSONALITY (Lazy, Glutton, Cuddly, Playful, Messy, Sleepyhead) set from their seed — it tweaks their care (e.g. gluttons get hungry faster, playful pets refill play charges quicker, messy pets get dirty sooner) and plays little idle animations on the pet screen. See it in the info panel. Also: the shop Back button now returns to your pet.',
-    it: 'I pet ora hanno una PERSONALITÀ (Pigro, Goloso, Coccolone, Giocoso, Disordinato, Dormiglione) determinata dal loro seme — modifica le cure (es. i golosi hanno fame più in fretta, i giocosi ricaricano prima le cariche di gioco, i disordinati si sporcano prima) e mostra animazioni sullo schermo del pet. La vedi nel pannello info. Inoltre: il tasto Indietro del negozio ora torna al pet.',
-    ja: 'ペットに せいかくが つきました（なまけもの・くいしんぼう・あまえんぼう・あそびずき・ずぼら・ねぼすけ）。シードで きまり、せわに えいきょうし（くいしんぼうは おなかが すきやすい、あそびずきは チャージが はやい、ずぼらは よごれやすい など）、がめんで アイドルアニメを みせます。じょうほうパネルで かくにん。また、ショップの「もどる」は ペットへ もどります。',
+    en: 'Pets now have a PERSONALITY (Lazy, Glutton, Cuddly, Playful, Messy, Sleepyhead) set from their seed — it tweaks their care (e.g. gluttons get hungry faster, playful pets refill play charges quicker, messy pets get dirty sooner) and plays little idle animations on the pet screen. See it in the info panel. Also: Clean now uses charges (3, +1 every 5 min) like Heal & Play; the shop Back button now returns to your pet.',
+    it: 'I pet ora hanno una PERSONALITÀ (Pigro, Goloso, Coccolone, Giocoso, Disordinato, Dormiglione) determinata dal loro seme — modifica le cure (es. i golosi hanno fame più in fretta, i giocosi ricaricano prima le cariche di gioco, i disordinati si sporcano prima) e mostra animazioni sullo schermo del pet. La vedi nel pannello info. Inoltre: Pulisci ora usa cariche (3, +1 ogni 5 min) come Cura e Gioca; il tasto Indietro del negozio ora torna al pet.',
+    ja: 'ペットに せいかくが つきました（なまけもの・くいしんぼう・あまえんぼう・あそびずき・ずぼら・ねぼすけ）。シードで きまり、せわに えいきょうし（くいしんぼうは おなかが すきやすい、あそびずきは チャージが はやい、ずぼらは よごれやすい など）、がめんで アイドルアニメを みせます。じょうほうパネルで かくにん。また、おそうじも チャージせいに（3かい、5ふんで1かいかいふく／かいふく・あそぶ とおなじ）。ショップの「もどる」は ペットへ もどります。',
   }] },
   { version: 'v0.14', items: [{
     en: 'Shop Back returns to Menu; daily free 50 coins in the shop; battles use charges (3, +1 every 5 min) for Random & Rivals; Protect now blocks 50% (was full); neglect makes pets SICK with a 24h cure deadline (they lose stats each hour, no more instant HP-death); tap a battle move to use it, long-press to inspect it.',
@@ -1012,12 +1012,39 @@ export function doScold() {
 // dislike baths so happiness drops by 8.
 export function doClean() {
   if (!requirePet()) return;
-  const c = state.pet.care;
+  const pet = state.pet;
+  // v14B: Clean is gated by CHARGES (3, +1 every 5 min), like Heal/Play.
+  refreshCleanCharges(pet);
+  if ((pet.cleanCharges || 0) <= 0) {
+    toast(t('toast.cleanNotReady', { time: fmtDuration(cleanChargeRemaining(pet)) }));
+    return;
+  }
+  if (pet.cleanCharges >= CLEAN_MAX_CHARGES) pet.cleanRefillAt = Date.now() + CLEAN_REFILL_MS;
+  pet.cleanCharges--;
+  const c = pet.care;
   c.hygiene = clamp(c.hygiene + 75, 0, 100);
   c.happiness = clamp(c.happiness - 8, 0, 100);
   reaction('🫧');
   bouncePet();
   afterAction('bath time!');
+}
+
+// Lazily refill clean charges: +1 every CLEAN_REFILL_MS, capped at max
+// (mirrors refreshHealCharges / refreshPlayCharges).
+function refreshCleanCharges(pet) {
+  if (typeof pet.cleanCharges !== 'number') pet.cleanCharges = CLEAN_MAX_CHARGES;
+  if (pet.cleanCharges >= CLEAN_MAX_CHARGES) { pet.cleanRefillAt = 0; return; }
+  const now = Date.now();
+  while (pet.cleanCharges < CLEAN_MAX_CHARGES && pet.cleanRefillAt && now >= pet.cleanRefillAt) {
+    pet.cleanCharges++;
+    pet.cleanRefillAt = pet.cleanCharges < CLEAN_MAX_CHARGES ? pet.cleanRefillAt + CLEAN_REFILL_MS : 0;
+  }
+}
+// Milliseconds until the next clean charge (0 if a charge is available now).
+function cleanChargeRemaining(pet) {
+  refreshCleanCharges(pet);
+  if ((pet.cleanCharges || 0) > 0) return 0;
+  return Math.max(0, (pet.cleanRefillAt || 0) - Date.now());
 }
 
 export function doSleep() {
@@ -1594,6 +1621,23 @@ function refreshBars() {
       playBtn.disabled = false;
       playBtn.classList.remove('disabled');
       if (label) label.textContent = t('action.playCharges', { n: charges, max: PLAY_MAX_CHARGES });
+    }
+  }
+  // v14B: Clean (🫧) button mirrors Play — "Clean {n}/3" when available, disabled
+  // with a live "Clean {time}" countdown when empty.
+  const cleanBtn = $('btn-clean');
+  if (cleanBtn) {
+    refreshCleanCharges(pet);
+    const label = cleanBtn.querySelector('.act-label');
+    const charges = pet.cleanCharges || 0;
+    if (charges <= 0) {
+      cleanBtn.disabled = true;
+      cleanBtn.classList.add('disabled');
+      if (label) label.textContent = t('action.cleanCooldown', { time: fmtDuration(cleanChargeRemaining(pet)) });
+    } else {
+      cleanBtn.disabled = false;
+      cleanBtn.classList.remove('disabled');
+      if (label) label.textContent = t('action.cleanCharges', { n: charges, max: CLEAN_MAX_CHARGES });
     }
   }
 }
