@@ -697,6 +697,20 @@ body {
 .food-item .f-ico { font-size: 30px; }
 .food-item .f-name { font-size: 12px; font-weight: 800; color: var(--ink); }
 
+/* Dark semi-transparent backdrop behind the RPS minigame (mirrors the training
+   modal backdrop). Covers the whole app and dims the pet; the RPS panel (z70),
+   countdown (z60), you-icon and pet-icon (z4) all sit ABOVE it (z-index 3). */
+.rps-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.rps-backdrop.open { opacity: 1; pointer-events: auto; }
+
 /* ---------------- RPS minigame (v13: low bottom panel) ---------------- */
 /* A compact bar that slides up from the bottom, just tall enough for the three
    choice buttons — NOT a full-screen sheet. Sits above the tab bar. */

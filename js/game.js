@@ -1332,6 +1332,8 @@ function openRps() {
   resetRpsReveal();
   const choices = $('rps-choices');
   if (choices) choices.style.display = '';
+  const backdrop = $('rps-backdrop');
+  if (backdrop) backdrop.classList.add('open');
   const panel = $('rps-panel');
   if (panel) panel.classList.add('open');
 }
@@ -1341,6 +1343,8 @@ function closeRps() {
   rpsBusy = false;
   const panel = $('rps-panel');
   if (panel) panel.classList.remove('open');
+  const backdrop = $('rps-backdrop');
+  if (backdrop) backdrop.classList.remove('open');
   resetRpsReveal();
 }
 
@@ -2467,6 +2471,7 @@ export function initGame() {
   // sheet close buttons + tap-on-backdrop to dismiss
   bindClick('food-close', () => closeSheet('food-sheet'));
   bindClick('rps-close', closeRps);
+  bindClick('rps-backdrop', closeRps); // tap the dim backdrop to close the minigame
   bindSheetBackdrop('food-sheet');
 
   // RPS move buttons
