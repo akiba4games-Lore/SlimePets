@@ -1241,10 +1241,10 @@ export function doTrain(name) {
   markAchievement(); // a completed session counts as an achievement
   reaction(ex.emoji);
   bouncePet();
-  const shown = Math.max(1, Math.round(gain * 10) / 10);
-  // v14C: the training result text now shows inside the animation overlay
-  // (just below the pet), not as a bottom toast.
-  playTrainingAnim(name, t('toast.trained', { name: pet.name, ex: t('train.' + name.toLowerCase()), amount: shown, stat: ex.label }));
+  const shown = gain.toFixed(2);
+  // v14C: two-line result text inside the animation overlay (below the pet),
+  // "{name} ha fatto {ex}\n+{amount} {stat}" — appears halfway through the anim.
+  playTrainingAnim(name, t('train.result', { name: pet.name, ex: t('train.' + name.toLowerCase()), amount: shown, stat: ex.label }));
   if (leveled > 0) setTimeout(() => toast(t('toast.reachedLevel', { name: pet.name, level: pet.level })), 700);
   // Level up, a completed session, and possible weight loss can all unlock moves.
   setTimeout(checkLearning, leveled > 0 ? 1100 : 400);
@@ -1804,6 +1804,7 @@ function hideTrainOverlay() {
   if (ov) ov.classList.remove('open');
   const stage = $('train-stage');
   if (stage) stage.classList.remove('perform', 'refuse', 'show');
+  clearTimeout(trainTextTimer);
   const txt = $('train-anim-text');
   if (txt) { txt.classList.remove('show'); txt.textContent = ''; }
 }
@@ -1811,6 +1812,7 @@ function hideTrainOverlay() {
 // v5.1: on a successful session, the pet trots onto the (now centered) stage,
 // does a few workout reps, then trots off. Purely cosmetic (CSS-driven).
 let trainAnimTimer = 0;
+let trainTextTimer = 0;
 function playTrainingAnim(name, message) {
   const stage = $('train-stage');
   const svg = $('train-svg');
@@ -1820,17 +1822,22 @@ function playTrainingAnim(name, message) {
   const emo = $('train-emoji');
   const ex = EXERCISES[name];
   if (emo) emo.textContent = name === 'Special' ? '🌟' : (ex ? ex.emoji : '💪');
-  // Result text just below the animation (inside the overlay, above the backdrop).
+  // Result text starts hidden; the animation plays first and the text pops in
+  // at the halfway point (below the animation, above the backdrop).
   const txt = $('train-anim-text');
-  if (txt) {
-    txt.textContent = message || '';
-    txt.classList.toggle('show', !!message);
-  }
+  if (txt) { txt.textContent = ''; txt.classList.remove('show'); }
   showTrainOverlay();
   stage.classList.remove('perform');
   void stage.offsetWidth; // reflow so the animation restarts on rapid repeats
   stage.classList.add('show', 'perform');
+  clearTimeout(trainTextTimer);
   clearTimeout(trainAnimTimer);
+  if (message && txt) {
+    trainTextTimer = setTimeout(() => {
+      txt.textContent = message;
+      txt.classList.add('show');
+    }, 1800); // ~halfway through the 3.6s animation
+  }
   trainAnimTimer = setTimeout(hideTrainOverlay, 3600); // v14C: 1s longer
 }
 
