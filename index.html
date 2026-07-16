@@ -29,8 +29,7 @@
         <p id="death-text" class="death-text">has passed away… tap to send it to the sky 🕊️</p>
       </div>
       <div id="night-overlay" class="night-overlay" aria-hidden="true">🌙</div>
-      <!-- RPS minigame overlays (countdown + pet's revealed icon, upside-down) -->
-      <div id="rps-countdown" class="rps-countdown" style="display:none" aria-hidden="true"></div>
+      <!-- RPS: pet's revealed icon, below the pet, upside-down (countdown lives at #app level so it can sit lower on screen) -->
       <div id="rps-pet-icon" class="rps-pet-icon" style="display:none" aria-hidden="true"></div>
     </div>
 
@@ -296,6 +295,9 @@
       <svg id="train-svg" viewBox="0 0 200 200" aria-hidden="true"></svg>
     </div>
   </div>
+
+  <!-- RPS 3-2-1 countdown — app-level so it sits midway between the pet and the screen bottom -->
+  <div id="rps-countdown" class="rps-countdown" style="display:none" aria-hidden="true"></div>
 </div>
 
 <!-- ===================== CDN LIBS ===================== -->

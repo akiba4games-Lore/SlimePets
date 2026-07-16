@@ -766,10 +766,10 @@ body {
    translucent dark disc behind the number so it reads clearly over the pet. */
 .rps-countdown {
   position: absolute;
-  top: 50%;
+  top: 68%; /* midway between the pet (upper stage) and the bottom of the screen */
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 30;
+  z-index: 60;
   width: 150px;
   height: 150px;
   display: flex;
