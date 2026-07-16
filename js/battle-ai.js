@@ -36,7 +36,7 @@ const MOVE_STATS = {
   Attack:           { element: 'none', power: 1.0,  cooldown: 0,  priority: 0 },
   Tackle:           { element: 'none', power: 1.1,  cooldown: 0,  priority: 0 },
   Slam:             { element: 'none', power: 1.3,  cooldown: 1,  priority: 0 },
-  Protect:          { element: 'none', power: 1.1,  cooldown: 2,  priority: 0, effect: { guard: 1.0 } },
+  Protect:          { element: 'none', power: 1.1,  cooldown: 2,  priority: 0, effect: { guard: 0.5 } },
   Explosion:        { element: 'none', power: 2.7,  cooldown: 3,  priority: 0, effect: { recoil: 0.20 } },
   // water
   Bubble:           { element: 'water', power: 1.1,  cooldown: 0,  priority: 0 },

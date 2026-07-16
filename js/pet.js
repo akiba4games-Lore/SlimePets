@@ -210,7 +210,7 @@ const MOVE_TABLE = [
   { element: 'none', name: 'Attack', tier: 'univ', powerMin: 1.0, powerMax: 1.0, cooldown: 0, priority: 0, effect: null, learn: 'always' },
   { element: 'none', name: 'Tackle', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
   { element: 'none', name: 'Slam', tier: 'mid', powerMin: 1.2, powerMax: 1.4, cooldown: 1, priority: 0, effect: null, learn: 'medium' },
-  { element: 'none', name: 'Protect', tier: 'strong', powerMin: 1.0, powerMax: 1.2, cooldown: 2, priority: 0, effect: { guard: 1.0 }, learn: 'hard' },
+  { element: 'none', name: 'Protect', tier: 'strong', powerMin: 1.0, powerMax: 1.2, cooldown: 2, priority: 0, effect: { guard: 0.5 }, learn: 'hard' },
   { element: 'none', name: 'Explosion', tier: 'special', powerMin: 2.4, powerMax: 3.0, cooldown: 3, priority: 0, effect: { recoil: 0.20 }, learn: 'SPECIAL_08' },
 
   { element: 'water', name: 'Bubble', tier: 'basic', powerMin: 1.0, powerMax: 1.2, cooldown: 0, priority: 0, effect: null, learn: 'easy' },
@@ -684,7 +684,7 @@ export function createPet(name, seed) {
   const genome = generateGenome(seed);
   const now = Date.now();
   const pet = {
-    version: 12,
+    version: 13,
     name: (name && String(name).trim()) || 'Slime',
     genome,
     stage: 'egg',
@@ -704,6 +704,12 @@ export function createPet(name, seed) {
     healRefillAt: 0, // ms of the next heal-charge refill (0 = full)
     playCharges: 3, // 🎈 Play (RPS) charges; refills 1 / 5 min up to 3 (v12)
     playRefillAt: 0, // ms of the next play-charge refill (0 = full)
+    // v14A (§3) — battle charges: 3, +1 every 5 min (max 3). Wild/rival battles
+    // consume 1 to start; local QR PvP is never gated.
+    battleCharges: 3,
+    battleRefillAt: 0, // ms of the next battle-charge refill (0 = full)
+    // v14A (§2) — daily free coins: timestamp of the last claim (0 = never).
+    lastDailyCoinAt: 0,
     lastEggAt: 0, // v5: timestamp of the last MANUAL "Hatch a New Egg" (4h cooldown §7)
     level: 1,
     xp: 0,
@@ -738,9 +744,14 @@ export function createPet(name, seed) {
     // v5: food-boredom tracking (§2) — 3× the same food in a row hits happiness.
     sameFoodStreak: 0,
     lastFoodId: null,
-    state: 'alive', // 'alive' | 'dead' (death via starvation only)
+    state: 'alive', // 'alive' | 'dead' (death via illness deadline — v14A §5)
     lastFedAt: now, // ms of last feed; starvation starts 2h after this
     trainBlockUntil: 0, // v5.1: refusing to train locks ALL training for 5 min
+    // v14A (§5) — illness rework: sickness is the lethal path. When the pet
+    // becomes sick a 24h death timer (sickDeadline) starts; while sick it loses
+    // ~1 battle stat point per real hour via statPenalty (persists after cure).
+    sickDeadline: 0, // ms deadline: die if still sick at this time (0 = none)
+    statPenalty: { str: 0, spd: 0, def: 0, crit: 0, hp: 0 },
   };
   pet.hpCurrent = computeStats(pet).hp; // born at full health
   return pet;
@@ -784,11 +795,17 @@ export function computeStats(pet) {
   const t = pet.training || { str: 0, hp: 0, spd: 0, def: 0, crit: 0 };
   const lg = Math.max(0, (pet.level || 1) - 1); // level growth steps
   const a = g.affinity;
-  const str = Math.max(1, Math.round((BASE.str + t.str + lg * 2.0) * a.str));
-  const hp = Math.max(1, Math.round((BASE.hp + t.hp * 3 + lg * 6.0) * a.hp));
-  const spd = Math.max(1, Math.round((BASE.spd + t.spd + lg * 1.6) * a.spd));
-  const def = Math.max(1, Math.round((BASE.def + t.def + lg * 1.4) * a.def));
-  const crit = Math.max(1, Math.round((BASE.crit + t.crit + lg * 1.2) * a.crit));
+  // v14A (§5): sickness accrues a persistent per-stat penalty (statPenalty),
+  // subtracted here. Each stat floors at 0, except hp which floors at 1 so a
+  // pet always has some health bar. When there is no penalty this is identical
+  // to the pre-v14A formula (the raw values never round below 1).
+  const p = pet.statPenalty || {};
+  const pen = (k) => (typeof p[k] === 'number' && isFinite(p[k]) && p[k] > 0 ? p[k] : 0);
+  const str = Math.max(0, Math.round((BASE.str + t.str + lg * 2.0) * a.str) - pen('str'));
+  const hp = Math.max(1, Math.round((BASE.hp + t.hp * 3 + lg * 6.0) * a.hp) - pen('hp'));
+  const spd = Math.max(0, Math.round((BASE.spd + t.spd + lg * 1.6) * a.spd) - pen('spd'));
+  const def = Math.max(0, Math.round((BASE.def + t.def + lg * 1.4) * a.def) - pen('def'));
+  const crit = Math.max(0, Math.round((BASE.crit + t.crit + lg * 1.2) * a.crit) - pen('crit'));
   return { hp, str, spd, def, crit };
 }
 
@@ -945,7 +962,7 @@ export function deserializePet(obj) {
   const base = createPet(obj.name, genome.seed);
   const pet = { ...base, ...obj };
   pet.genome = genome;
-  pet.version = 12;
+  pet.version = 13;
   // v2 care: hunger/happiness/hygiene only. Migrate old saves by dropping energy.
   pet.care = { hunger: 80, happiness: 80, hygiene: 80, ...(obj.care || {}) };
   delete pet.care.energy;
@@ -977,6 +994,12 @@ export function deserializePet(obj) {
   if (typeof pet.playCharges !== 'number' || !isFinite(pet.playCharges)) pet.playCharges = 3;
   pet.playCharges = Math.max(0, Math.min(3, Math.floor(pet.playCharges)));
   if (typeof pet.playRefillAt !== 'number' || !isFinite(pet.playRefillAt)) pet.playRefillAt = 0;
+  // v14A (§3) — battle charges: 3, +1 every 5 min. Default 3/0 for older saves.
+  if (typeof pet.battleCharges !== 'number' || !isFinite(pet.battleCharges)) pet.battleCharges = 3;
+  pet.battleCharges = Math.max(0, Math.min(3, Math.floor(pet.battleCharges)));
+  if (typeof pet.battleRefillAt !== 'number' || !isFinite(pet.battleRefillAt)) pet.battleRefillAt = 0;
+  // v14A (§2) — daily free coins timestamp (0 = never claimed).
+  if (typeof pet.lastDailyCoinAt !== 'number' || !isFinite(pet.lastDailyCoinAt)) pet.lastDailyCoinAt = 0;
   // hpCurrent: default to max for old saves, always clamp to [1, max].
   const maxHp = computeStats(pet).hp;
   pet.hpCurrent = clampHp(pet.hpCurrent, maxHp);
@@ -1013,6 +1036,19 @@ export function deserializePet(obj) {
   // v7 illness fields (defaults for pre-v7 saves).
   pet.sick = !!pet.sick;
   pet.illTimer = Math.max(0, num(pet.illTimer, 0));
+  // v14A (§5) — illness rework: sickDeadline (24h death timer) + persistent
+  // per-stat penalty. Migrate defaults; if a save is already sick but has no
+  // deadline (pre-v14A), start one now so the lethal timer is well-defined.
+  pet.sickDeadline = Math.max(0, num(pet.sickDeadline, 0));
+  const rawPen = (pet.statPenalty && typeof pet.statPenalty === 'object') ? pet.statPenalty : {};
+  pet.statPenalty = {
+    str: Math.max(0, Math.floor(num(rawPen.str, 0))),
+    spd: Math.max(0, Math.floor(num(rawPen.spd, 0))),
+    def: Math.max(0, Math.floor(num(rawPen.def, 0))),
+    crit: Math.max(0, Math.floor(num(rawPen.crit, 0))),
+    hp: Math.max(0, Math.floor(num(rawPen.hp, 0))),
+  };
+  if (pet.sick && pet.sickDeadline <= 0) pet.sickDeadline = now + 24 * 60 * 60 * 1000;
   if (!pet.moveOverrides || typeof pet.moveOverrides !== 'object') {
     pet.moveOverrides = {};
   } else {

@@ -69,8 +69,13 @@ const PLAY_MAX_CHARGES = 3;           // up to 3 charges stored
 
 // v12 — game version + menu changelog (newest-first). Item text carries EN + IT
 // (JA where straightforward); headings are localized via i18n.
-export const GAME_VERSION = 'v0.12';
+export const GAME_VERSION = 'v0.14';
 const CHANGELOG = [
+  { version: 'v0.14', items: [{
+    en: 'Shop Back returns to Menu; daily free 50 coins in the shop; battles use charges (3, +1 every 5 min) for Random & Rivals; Protect now blocks 50% (was full); neglect makes pets SICK with a 24h cure deadline (they lose stats each hour, no more instant HP-death); tap a battle move to use it, long-press to inspect it.',
+    it: 'Il tasto Indietro del negozio torna al Menu; 50 monete gratis al giorno nel negozio; le battaglie usano cariche (3, +1 ogni 5 min) per Casuale e Rivali; Protezione ora blocca il 50% (prima tutto); la trascuratezza fa AMMALARE il pet con 24h per curarlo (perde statistiche ogni ora, niente più morte istantanea per HP); tocca una mossa in battaglia per usarla, tieni premuto per ispezionarla.',
+    ja: 'ショップの「もどる」はメニューへ。ショップで まいにち 50コイン むりょう。ランダム＆ライバルのバトルは チャージせい（3かい、5ふんで1かいかいふく）。まもるは 50% ブロックに（まえは ぜんぶ）。せわを おこたると びょうきに——24じかんいないに なおさないと しんじゃう（まいじかん ステータスダウン、HPそくしは なし）。バトルのわざは タップで しよう、ながおしで しょうさい。',
+  }] },
   { version: 'v0.12', items: [{
     en: 'Battle area split into Random / Local / Prep panels; Rivals moved top-right (local opponents only); Play limited to 3 charges (refills every 5 min); changelog + version in the menu.',
     it: 'Area battaglia divisa in pannelli Casuale / Locale / Preparazione; Rivali spostati in alto a destra (solo avversari locali); Gioca limitato a 3 cariche (si ricarica ogni 5 min); novità + versione nel menu.',
@@ -152,13 +157,28 @@ const REROLL_COST = 200;
 const SYRINGE_COST = 50;
 const CURE_HAPPY = 10;
 
-// v7 — Illness (DESIGN v7). Sustained sad/hungry state makes the pet sick.
+// v7 — Illness (DESIGN v7 + v14A §5). Sustained sad/hungry state — OR prolonged
+// starvation past the 2h grace — makes the pet SICK. Sickness is the lethal path:
+// a 24h death timer starts and the pet loses ~1 battle stat point per real hour.
 const ILL_ONSET_MS = 8 * 60 * 1000; // 8 real minutes of sustained bad state
 const ILL_HAPPY_THRESH = 20; // happiness below this counts as a bad state
 const ILL_HUNGER_THRESH = 15; // hunger below this counts as a bad state
 const ILL_RECOVER_MULT = 2; // illTimer decays this × dt while healthy
-const ILL_HP_PER_HR = 0.04; // fraction of MAX HP drained per hour while sick (floor 1)
 const SICK_HAPPY_MULT = 2; // happiness decays this × faster while sick
+// v14A (§5): once sick, the pet dies if not cured within 24h, and loses one
+// random (currently >0) battle stat point per real hour (persistent penalty).
+const SICK_DEADLINE_MS = 24 * 60 * 60 * 1000;
+const SICK_STAT_STEP_MS = 60 * 60 * 1000; // one stat penalty point per real hour
+const SICK_STAT_KEYS = ['str', 'spd', 'def', 'crit', 'hp'];
+
+// v14A (§2) — daily free coins (economy safety-net): 50 coins once per 24h.
+const DAILY_COIN_MS = 24 * 60 * 60 * 1000;
+const DAILY_COIN_AMOUNT = 50;
+
+// v14A (§3) — battle charges: 3, +1 every 5 min (max 3). Wild/rival battles
+// consume 1 to start; local QR PvP is never gated.
+const BATTLE_REFILL_MS = 5 * 60 * 1000;
+const BATTLE_MAX_CHARGES = 3;
 
 // v6.1 — training now costs a flat 20 stamina per session (all exercises).
 const TRAIN_STAMINA_COST = 20;
@@ -183,9 +203,9 @@ const SELF_POTTY_EDU = 60; // education >= this enables self-potty
 const TRAIN_HYGIENE_HIT = 12; // extra hygiene lost per training session
 const TRAIN_BLOCK_MS = 5 * 60 * 1000; // v5.1: a training refusal locks ALL training this long
 
-// v4 — starvation (DESIGN §6). Neglect drains HP + weight after a grace period.
+// v4 — starvation (DESIGN §6; v14A §5). Neglect drains weight after a grace
+// period and — past the grace — makes the pet SICK (no more HP-drain-to-death).
 const STARVE_GRACE_MS = 2 * 60 * 60 * 1000; // 2h since last feed before it bites
-const STARVE_HP_PER_HR = 0.125; // fraction of MAX HP lost per hour while starving
 const STARVE_WEIGHT_PER_HR = 100 / 6; // ~16.7/h ⇒ full weight gone in 6h
 
 // v4 — element display icons (UI only; the type chart lives in battle.js).
@@ -329,7 +349,8 @@ function checkLearning() {
   return learned;
 }
 
-// Called when hpCurrent reaches 0 (starvation only). Freezes the pet.
+// Called when the pet dies (v14A §5: illness deadline; battles never kill).
+// Freezes the pet and shows the send-off overlay.
 function markDead() {
   const pet = state.pet;
   if (!pet || pet.state === 'dead') return;
@@ -339,15 +360,61 @@ function markDead() {
   save();
 }
 
-// Detect a fresh death after a care update (tick / offline catch-up).
+// Detect a fresh death after a care update (tick / offline catch-up). v14A §5:
+// starvation no longer drains HP to 0 — the lethal path is now an uncured
+// illness past its 24h deadline. (hpCurrent<=0 kept as a defensive safety net.)
 function detectDeath() {
   const pet = state.pet;
   if (!pet || pet.state === 'dead' || pet.stage === 'egg') return false;
+  if (pet.sick && (pet.sickDeadline || 0) > 0 && Date.now() >= pet.sickDeadline) {
+    markDead();
+    return true;
+  }
   if (pet.hpCurrent <= 0) {
     markDead();
     return true;
   }
   return false;
+}
+
+// v14A (§5) — ensure a well-formed statPenalty object on the pet.
+function ensureStatPenalty(pet) {
+  if (!pet.statPenalty || typeof pet.statPenalty !== 'object') {
+    pet.statPenalty = { str: 0, spd: 0, def: 0, crit: 0, hp: 0 };
+  }
+  for (const k of SICK_STAT_KEYS) {
+    const v = pet.statPenalty[k];
+    if (typeof v !== 'number' || !isFinite(v) || v < 0) pet.statPenalty[k] = 0;
+  }
+  return pet.statPenalty;
+}
+
+// v14A (§5) — the pet becomes sick (from any trigger). Starts the 24h death
+// timer if one isn't already running, and toasts once.
+function makeSick(pet) {
+  if (!pet || pet.sick) return;
+  pet.sick = true;
+  pet.illTimer = 0;
+  if (!pet.sickDeadline || pet.sickDeadline <= 0) pet.sickDeadline = Date.now() + SICK_DEADLINE_MS;
+  toast(t('toast.gotSick', { name: pet.name }));
+}
+
+// v14A (§5) — apply one −1 penalty to a random battle stat whose CURRENT
+// computed value is > 0 (hp is always >0 because computeStats floors it at 1).
+function applySickStatPenalty(pet) {
+  const pen = ensureStatPenalty(pet);
+  const stats = computeStats(pet);
+  const candidates = SICK_STAT_KEYS.filter((k) => (stats[k] || 0) > 0);
+  if (candidates.length === 0) return;
+  const stat = candidates[Math.floor(Math.random() * candidates.length)];
+  pen[stat] += 1;
+  // Keep the HP bar consistent when max HP shrinks (never above the new max).
+  if (stat === 'hp') {
+    const max = computeStats(pet).hp;
+    if (typeof pet.hpCurrent === 'number' && isFinite(pet.hpCurrent)) {
+      pet.hpCurrent = Math.max(1, Math.min(pet.hpCurrent, max));
+    }
+  }
 }
 
 // Tap-to-send-off: fly the little angel up, then hatch a fresh egg (coins kept).
@@ -433,34 +500,44 @@ function applyDecay(pet, dtSec) {
     if (pet.weight > WEIGHT_TARGET) pet.weight = Math.max(WEIGHT_TARGET, pet.weight - wDelta);
     else if (pet.weight < WEIGHT_TARGET) pet.weight = Math.min(WEIGHT_TARGET, pet.weight + wDelta);
   }
-  // HP: starvation HP drain applies ONLY while awake (a sleeping pet can't
-  // starve to death — the sleep heal keeps running). Awake+starving overrides
-  // the passive heal entirely and can reach 0 (death).
-  if (starving && !pet.sleeping) {
-    pet.hpCurrent = clamp(pet.hpCurrent - maxHp * STARVE_HP_PER_HR * dtH, 0, maxHp);
-  } else if (pet.sick) {
-    // v7: illness drains HP slowly (~4%/h) but NEVER kills (floor 1); it
-    // overrides the passive heal so a sick pet can't heal up on its own.
-    pet.hpCurrent = clamp(pet.hpCurrent - maxHp * ILL_HP_PER_HR * dtH, 1, maxHp);
+  // HP (v14A §5): starvation no longer drains HP to death. While sick, block the
+  // passive self-heal (hold HP steady — the lethal path is the 24h deadline, not
+  // HP); otherwise passive HP healing (awake +8%/h, sleeping +32%/h), floored 1.
+  if (pet.sick) {
+    pet.hpCurrent = clamp(pet.hpCurrent, 1, maxHp);
   } else {
-    // passive HP healing (awake +8%/h, sleeping +32%/h of max), floored at 1.
     const healRate = pet.sleeping ? HEAL_RATE_SLEEP : HEAL_RATE_AWAKE;
     pet.hpCurrent = clamp(pet.hpCurrent + maxHp * healRate * dtH, 1, maxHp);
   }
-  // v7: illness accrual/onset. Only while hatched & not already sick: a
-  // sustained sad OR hungry state fills illTimer; a healthy state drains it.
+  // v7/v14A (§5): illness onset. Only while hatched & not already sick: a
+  // sustained sad OR hungry state fills illTimer; prolonged starvation (past the
+  // 2h grace) goes straight to sick. A healthy state drains illTimer.
   if (pet.stage !== 'egg' && !pet.sick) {
-    const badState = c.happiness < ILL_HAPPY_THRESH || c.hunger < ILL_HUNGER_THRESH;
-    if (badState) {
-      pet.illTimer = (pet.illTimer || 0) + dtSec * 1000;
-      if (pet.illTimer >= ILL_ONSET_MS) {
-        pet.sick = true;
-        pet.illTimer = 0;
-        toast(t('toast.gotSick', { name: pet.name }));
-      }
+    if (starving) {
+      makeSick(pet); // 2h grace elapsed → sick (no HP-drain-to-death anymore)
     } else {
-      pet.illTimer = Math.max(0, (pet.illTimer || 0) - dtSec * 1000 * ILL_RECOVER_MULT);
+      const badState = c.happiness < ILL_HAPPY_THRESH || c.hunger < ILL_HUNGER_THRESH;
+      if (badState) {
+        pet.illTimer = (pet.illTimer || 0) + dtSec * 1000;
+        if (pet.illTimer >= ILL_ONSET_MS) makeSick(pet);
+      } else {
+        pet.illTimer = Math.max(0, (pet.illTimer || 0) - dtSec * 1000 * ILL_RECOVER_MULT);
+      }
     }
+  }
+  // v14A (§5): while sick, apply ~1 stat penalty per real hour elapsed since the
+  // sickness began (sickStart = sickDeadline − 24h). We derive the count owed
+  // from the elapsed hours minus the total already applied (sum of statPenalty),
+  // so it self-corrects across the 1s tick AND the offline catch-up.
+  if (pet.stage !== 'egg' && pet.sick) {
+    if (!pet.sickDeadline || pet.sickDeadline <= 0) pet.sickDeadline = Date.now() + SICK_DEADLINE_MS;
+    const sickStart = pet.sickDeadline - SICK_DEADLINE_MS;
+    const owedHours = Math.floor((Date.now() - sickStart) / SICK_STAT_STEP_MS);
+    const pen = ensureStatPenalty(pet);
+    const applied = pen.str + pen.spd + pen.def + pen.crit + pen.hp;
+    let toApply = Math.max(0, owedHours - applied);
+    let guard = 0;
+    while (toApply > 0 && guard < 240) { applySickStatPenalty(pet); toApply -= 1; guard += 1; }
   }
   // stamina regen: ~1 per 30s (2x sleeping)
   const rate = pet.sleeping ? 2 : 1;
@@ -1707,6 +1784,50 @@ function canBattle() {
   return !!(state.pet && state.pet.stage !== 'egg' && state.pet.state !== 'dead');
 }
 
+// v14A (§3) — battle charges: lazily refill +1 every BATTLE_REFILL_MS, capped at
+// max (mirrors refreshHealCharges / refreshPlayCharges).
+function refreshBattleCharges(pet) {
+  if (typeof pet.battleCharges !== 'number') pet.battleCharges = BATTLE_MAX_CHARGES;
+  if (pet.battleCharges >= BATTLE_MAX_CHARGES) { pet.battleRefillAt = 0; return; }
+  const now = Date.now();
+  while (pet.battleCharges < BATTLE_MAX_CHARGES && pet.battleRefillAt && now >= pet.battleRefillAt) {
+    pet.battleCharges++;
+    pet.battleRefillAt = pet.battleCharges < BATTLE_MAX_CHARGES ? pet.battleRefillAt + BATTLE_REFILL_MS : 0;
+  }
+}
+// Milliseconds until the next battle charge (0 if one is available now).
+function battleChargeRemaining(pet) {
+  refreshBattleCharges(pet);
+  if ((pet.battleCharges || 0) > 0) return 0;
+  return Math.max(0, (pet.battleRefillAt || 0) - Date.now());
+}
+
+// v14A (§3) — glue for battle-ui: consume a battle charge to START a wild/rival
+// battle. Local QR PvP (kind 'pvp') is NEVER gated. Returns true if the battle
+// may proceed; false (with a countdown toast) when out of charges.
+function consumeBattleCharge(kind) {
+  const pet = state.pet;
+  if (!pet) return true;
+  if (kind === 'pvp') return true; // local QR PvP is free
+  refreshBattleCharges(pet);
+  if ((pet.battleCharges || 0) <= 0) {
+    toast(t('battle.noCharges', { time: fmtDuration(battleChargeRemaining(pet)) }));
+    return false;
+  }
+  if (pet.battleCharges >= BATTLE_MAX_CHARGES) pet.battleRefillAt = Date.now() + BATTLE_REFILL_MS;
+  pet.battleCharges--;
+  save();
+  return true;
+}
+
+// v14A (§3) — glue for battle-ui: current battle-charge status for the hub label.
+function getBattleCharges() {
+  const pet = state.pet;
+  if (!pet) return { charges: 0, max: BATTLE_MAX_CHARGES, remaining: 0 };
+  refreshBattleCharges(pet);
+  return { charges: pet.battleCharges || 0, max: BATTLE_MAX_CHARGES, remaining: battleChargeRemaining(pet) };
+}
+
 function payBattleCost() {
   const pet = state.pet;
   if (!pet) return;
@@ -1886,6 +2007,45 @@ function refreshShop() {
   const pet = state.pet;
   const c = $('shop-coins');
   if (c) c.textContent = `🪙 ${(pet && pet.coins) || 0}`;
+  // v14A (§2): Daily Coins button — "Claim 50 🪙" when ready, else a countdown.
+  const dailyBtn = $('btn-daily-coin');
+  if (dailyBtn && pet) {
+    const remaining = dailyCoinRemaining(pet);
+    if (remaining > 0) {
+      dailyBtn.disabled = true;
+      dailyBtn.classList.add('disabled');
+      dailyBtn.textContent = t('shop.dailyCooldown', { time: fmtDuration(remaining) });
+    } else {
+      dailyBtn.disabled = false;
+      dailyBtn.classList.remove('disabled');
+      dailyBtn.textContent = t('shop.dailyClaim', { coins: DAILY_COIN_AMOUNT });
+    }
+  }
+}
+
+// v14A (§2) — milliseconds until the daily free coins can be claimed (0 = now).
+function dailyCoinRemaining(pet) {
+  const last = (pet && pet.lastDailyCoinAt) || 0;
+  return Math.max(0, DAILY_COIN_MS - (Date.now() - last));
+}
+
+// v14A (§2) — grant 50 free coins once per 24h; refuse (with a countdown) otherwise.
+function doClaimDailyCoins() {
+  const pet = state.pet;
+  if (!pet) return;
+  const remaining = dailyCoinRemaining(pet);
+  if (remaining > 0) {
+    toast(t('shop.dailyNotReady', { time: fmtDuration(remaining) }));
+    refreshShop();
+    return;
+  }
+  pet.coins = (pet.coins || 0) + DAILY_COIN_AMOUNT;
+  pet.lastDailyCoinAt = Date.now();
+  reaction('🪙');
+  toast(t('shop.dailyClaimed', { coins: DAILY_COIN_AMOUNT }));
+  refreshShop();
+  refresh();
+  save();
 }
 
 // Cure Potion — fully restores HP (no cooldown, unlike the free Heal).
@@ -1932,6 +2092,7 @@ function doBuySyringe() {
   pet.coins -= SYRINGE_COST;
   pet.sick = false;
   pet.illTimer = 0;
+  pet.sickDeadline = 0; // v14A (§5): stop the death timer. Lost stats do NOT return.
   pet.care.happiness = clamp(pet.care.happiness + CURE_HAPPY, 0, 100);
   reaction('💉');
   toast(t('shop.cured', { name: pet.name }));
@@ -2141,6 +2302,7 @@ export function initGame() {
   // shop navigation + notifications toggle
   bindClick('btn-shop', () => showScreen('shop'));
   bindClick('btn-shop-back', () => showScreen('menu'));
+  bindClick('btn-daily-coin', doClaimDailyCoins);
   bindClick('btn-buy-cure', doBuyCure);
   bindClick('btn-buy-stamina', doBuyStamina);
   bindClick('btn-buy-syringe', doBuySyringe);
@@ -2279,7 +2441,35 @@ export function initGame() {
     save();
     return state.pet.lastFedAt;
   };
-  // Force death (starvation-style) to test the send-off / rebirth flow.
+  // v14A: make the pet sick now (optionally backdate the sickness start by
+  // `hoursAgo` so the stat-penalty accrual / 24h deadline can be exercised).
+  window.DEV.sick = (hoursAgo) => {
+    if (!state.pet) return;
+    const h = typeof hoursAgo === 'number' ? hoursAgo : 0;
+    state.pet.sick = true;
+    state.pet.illTimer = 0;
+    state.pet.sickDeadline = Date.now() + SICK_DEADLINE_MS - h * 3600e3;
+    refresh();
+    save();
+    return { sick: state.pet.sick, sickDeadline: state.pet.sickDeadline, statPenalty: state.pet.statPenalty };
+  };
+  // v14A: reset the daily-coin cooldown so the claim is available immediately.
+  window.DEV.resetDaily = () => {
+    if (!state.pet) return;
+    state.pet.lastDailyCoinAt = 0;
+    if (state.screen === 'shop') refreshShop();
+    save();
+    return state.pet.lastDailyCoinAt;
+  };
+  // v14A: set battle charges (default 0) to test the refuse / hub label.
+  window.DEV.battleCharges = (n) => {
+    if (!state.pet) return;
+    state.pet.battleCharges = Math.max(0, Math.min(BATTLE_MAX_CHARGES, Math.floor(Number(n) || 0)));
+    state.pet.battleRefillAt = state.pet.battleCharges < BATTLE_MAX_CHARGES ? Date.now() + BATTLE_REFILL_MS : 0;
+    save();
+    return state.pet.battleCharges;
+  };
+  // Force death (illness-style) to test the send-off / rebirth flow.
   window.DEV.kill = () => {
     if (!state.pet) return;
     state.pet.hpCurrent = 0;
@@ -2303,6 +2493,8 @@ export function initGame() {
     canBattle,
     payBattleCost,
     grantBattleResult,
+    consumeBattleCharge, // v14A (§3): wild/rival battle-charge gate
+    getBattleCharges,    // v14A (§3): hub charge label
     showScreen,
     showPet: () => showScreen('pet'),
     toast,

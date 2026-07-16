@@ -155,6 +155,13 @@ const en = {
   'shop.syringeDesc': 'Cures illness',
   'shop.cured': '{name} feels better! 💉✨',
   'shop.notSick': '{name} isn\'t sick right now.',
+  // v14A (§2) — daily free coins
+  'shop.daily': 'Daily Coins',
+  'shop.dailyDesc': 'Free coins once a day',
+  'shop.dailyClaim': 'Claim {coins} 🪙',
+  'shop.dailyCooldown': 'Next in {time}',
+  'shop.dailyClaimed': '+{coins} 🪙 daily bonus!',
+  'shop.dailyNotReady': 'Already claimed — back in {time}',
 
   // v5 — notifications
   'notif.enable': '🔔 Enable notifications',
@@ -175,7 +182,7 @@ const en = {
   'notif.dirtyTitle': '🛁 Bath time!',
   'notif.dirtyBody': '{name} is getting dirty!',
   'notif.sickTitle': '🤒 Feeling sick!',
-  'notif.sickBody': '{name} is sick — buy a Syringe to cure it!',
+  'notif.sickBody': '{name} is sick — cure it within 24h with a Syringe!',
 
   // rock-paper-scissors
   'rps.title': '✊✋✌️ Rock Paper Scissors',
@@ -198,7 +205,7 @@ const en = {
   'toast.stuffed': '{name} is stuffed! 🤢',
   'toast.enjoyedFood': '{name} enjoyed the {food}! 😋',
   'toast.boredFood': '{name} is bored of eating {food}… 😒',
-  'toast.gotSick': '{name} got sick! 🤒',
+  'toast.gotSick': '{name} got sick! 🤒 Cure it within 24h!',
   'toast.cuddleDeserved': 'A well-deserved cuddle! {name} beams 💖',
   'toast.cuddleSpoiled': '{name} loves the cuddle… maybe a bit too much 😤',
   'toast.pottyGood': 'Good potty, {name}! 💕',
@@ -257,6 +264,8 @@ const en = {
   'battle.joinQr': 'Join by QR',
   'battle.joinCode': 'Join by Code',
   'battle.tooTired': 'Too tired to battle!',
+  'battle.charges': '⚔️ {n}/{max}',
+  'battle.noCharges': 'No battle charges left — back in {time}',
   'battle.noRivals': 'Fight someone locally (QR) to add rivals!',
   'battle.back': 'Back',
   'battle.rivalSub': 'Lv {level} · {stage}',
@@ -298,6 +307,7 @@ const en = {
   // v8/v9/v10 — confirm popups, moves management, special training
   'confirm.confirm': 'Confirm',
   'confirm.cancel': 'Cancel',
+  'confirm.close': 'Close',
   'confirm.feedTitle': 'Feed {food}?',
   'confirm.price': 'Price: 🪙 {coins}',
   'confirm.moveTitle': 'Use {move}?',
@@ -326,7 +336,7 @@ const en = {
   'effect.enemyDebuff': 'Enemy {stat} {sign}{pct}%',
   'effect.heal': 'Heals {pct}% HP',
   'effect.recoil': 'Recoil {pct}%',
-  'effect.guard': '🛡️ Blocks the hit',
+  'effect.guard': '🛡️ Blocks 50% of the hit',
   'effect.noDamage': 'No damage',
   'effect.charge': '⚡ Charge {n}',
   'effect.stat.str': 'ATK',
@@ -500,6 +510,13 @@ const it = {
   'shop.syringeDesc': 'Cura la malattia',
   'shop.cured': '{name} si sente meglio! 💉✨',
   'shop.notSick': '{name} non è malato al momento.',
+  // v14A (§2) — monete giornaliere gratuite
+  'shop.daily': 'Monete giornaliere',
+  'shop.dailyDesc': 'Monete gratis una volta al giorno',
+  'shop.dailyClaim': 'Riscuoti {coins} 🪙',
+  'shop.dailyCooldown': 'Prossime tra {time}',
+  'shop.dailyClaimed': '+{coins} 🪙 bonus giornaliero!',
+  'shop.dailyNotReady': 'Già riscosse — torna tra {time}',
 
   // v5 — notifiche
   'notif.enable': '🔔 Attiva le notifiche',
@@ -520,7 +537,7 @@ const it = {
   'notif.dirtyTitle': '🛁 Serve un bagnetto!',
   'notif.dirtyBody': '{name} si sta sporcando!',
   'notif.sickTitle': '🤒 Si sente male!',
-  'notif.sickBody': '{name} è malato — compra una Siringa per curarlo!',
+  'notif.sickBody': '{name} è malato — curalo entro 24h con una Siringa!',
 
   'rps.title': '✊✋✌️ Carta Forbice Sasso',
   'rps.you': 'Tu',
@@ -541,7 +558,7 @@ const it = {
   'toast.stuffed': '{name} è sazio! 🤢',
   'toast.enjoyedFood': '{name} si è gustato {food}! 😋',
   'toast.boredFood': '{name} è stufo di mangiare {food}… 😒',
-  'toast.gotSick': '{name} si è ammalato! 🤒',
+  'toast.gotSick': '{name} si è ammalato! 🤒 Curalo entro 24h!',
   'toast.cuddleDeserved': 'Una coccola meritata! {name} è raggiante 💖',
   'toast.cuddleSpoiled': '{name} adora le coccole… forse un po\' troppo 😤',
   'toast.pottyGood': 'Bravo in bagno, {name}! 💕',
@@ -596,6 +613,8 @@ const it = {
   'battle.joinQr': 'Unisciti via QR',
   'battle.joinCode': 'Unisciti via codice',
   'battle.tooTired': 'Troppo stanco per combattere!',
+  'battle.charges': '⚔️ {n}/{max}',
+  'battle.noCharges': 'Nessuna carica battaglia — torna tra {time}',
   'battle.noRivals': 'Combatti qualcuno in locale (QR) per aggiungere rivali!',
   'battle.back': 'Indietro',
   'battle.rivalSub': 'Lv {level} · {stage}',
@@ -637,6 +656,7 @@ const it = {
   // v8/v9/v10 — popup di conferma, gestione mosse, allenamento speciale
   'confirm.confirm': 'Conferma',
   'confirm.cancel': 'Annulla',
+  'confirm.close': 'Chiudi',
   'confirm.feedTitle': 'Dai {food}?',
   'confirm.price': 'Prezzo: 🪙 {coins}',
   'confirm.moveTitle': 'Usare {move}?',
@@ -665,7 +685,7 @@ const it = {
   'effect.enemyDebuff': 'Nemico {stat} {sign}{pct}%',
   'effect.heal': 'Cura {pct}% HP',
   'effect.recoil': 'Contraccolpo {pct}%',
-  'effect.guard': '🛡️ Blocca il colpo',
+  'effect.guard': '🛡️ Blocca il 50% del colpo',
   'effect.noDamage': 'Nessun danno',
   'effect.charge': '⚡ Carica {n}',
   'effect.stat.str': 'ATT',
@@ -839,6 +859,13 @@ const ja = {
   'shop.syringeDesc': 'びょうきを なおす',
   'shop.cured': '{name} は げんきに なった！💉✨',
   'shop.notSick': '{name} は いま びょうきじゃ ないよ。',
+  // v14A (§2) — まいにち むりょうコイン
+  'shop.daily': 'まいにちコイン',
+  'shop.dailyDesc': '1日1回 むりょうコイン',
+  'shop.dailyClaim': '{coins} 🪙 うけとる',
+  'shop.dailyCooldown': 'つぎは {time}',
+  'shop.dailyClaimed': '+{coins} 🪙 デイリーボーナス！',
+  'shop.dailyNotReady': 'うけとりずみ——あと {time}',
 
   // v5 — つうち
   'notif.enable': '🔔 つうちを オンにする',
@@ -859,7 +886,7 @@ const ja = {
   'notif.dirtyTitle': '🛁 おふろの じかん！',
   'notif.dirtyBody': '{name} が よごれてきたよ！',
   'notif.sickTitle': '🤒 ぐあいが わるい！',
-  'notif.sickBody': '{name} が びょうき——ちゅうしゃを かって なおそう！',
+  'notif.sickBody': '{name} が びょうき——24じかんいないに ちゅうしゃで なおそう！',
 
   'rps.title': '✊✋✌️ じゃんけん',
   'rps.you': 'あなた',
@@ -880,7 +907,7 @@ const ja = {
   'toast.stuffed': '{name} は おなか いっぱい！🤢',
   'toast.enjoyedFood': '{name} は {food} を おいしそうに たべた！😋',
   'toast.boredFood': '{name} は {food} に あきちゃった… 😒',
-  'toast.gotSick': '{name} は びょうきに なった！🤒',
+  'toast.gotSick': '{name} は びょうきに なった！🤒 24じかんいないに なおそう！',
   'toast.cuddleDeserved': 'ごほうびの なでなで！{name} は にっこり 💖',
   'toast.cuddleSpoiled': '{name} は なでなで だいすき… ちょっと あまえんぼうかも 😤',
   'toast.pottyGood': 'トイレ じょうず、{name}！💕',
@@ -935,6 +962,8 @@ const ja = {
   'battle.joinQr': 'QRで さんか',
   'battle.joinCode': 'コードで さんか',
   'battle.tooTired': 'つかれて バトルできない！',
+  'battle.charges': '⚔️ {n}/{max}',
+  'battle.noCharges': 'バトルチャージなし——あと {time}',
   'battle.noRivals': 'ローカル（QR）で たたかって ライバルを ふやそう！',
   'battle.back': 'もどる',
   'battle.rivalSub': 'Lv {level} · {stage}',
@@ -976,6 +1005,7 @@ const ja = {
   // v8/v9/v10 — かくにんポップアップ・わざかんり・スペシャルトレーニング
   'confirm.confirm': 'けってい',
   'confirm.cancel': 'やめる',
+  'confirm.close': 'とじる',
   'confirm.feedTitle': '{food} を あげる？',
   'confirm.price': 'ねだん: 🪙 {coins}',
   'confirm.moveTitle': '{move} を つかう？',
@@ -1004,7 +1034,7 @@ const ja = {
   'effect.enemyDebuff': 'あいての {stat} {sign}{pct}%',
   'effect.heal': 'HPを {pct}% かいふく',
   'effect.recoil': 'はんどう {pct}%',
-  'effect.guard': '🛡️ こうげきを ふせぐ',
+  'effect.guard': '🛡️ こうげきを 50% ふせぐ',
   'effect.noDamage': 'ダメージなし',
   'effect.charge': '⚡ ためる {n}',
   'effect.stat.str': 'こうげき',

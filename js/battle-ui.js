@@ -74,6 +74,7 @@ function ensureStyles() {
     .bui-btn:disabled { opacity:0.5; cursor:default; }
     .bui-btn-secondary { background:hsl(200 60% 88%); }
     .bui-hub { position:relative; padding-top:28px; }
+    .bui-charges { text-align:center; font-weight:800; color:#6b5570; margin:-4px 0 2px; font-size:0.95rem; }
     .bui-rivals-btn { position:absolute; top:8px; right:10px; width:48px; height:48px;
       border-radius:50%; border:none; background:hsl(280 70% 90%); color:#402a55;
       font-size:1.4rem; cursor:pointer; box-shadow:0 2px 8px rgba(120,90,140,0.3); }
@@ -161,6 +162,29 @@ function el(tag, className, text) {
   if (className) e.className = className;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+// v14A (§6) — bind TAP vs LONG-PRESS on a button. A quick tap fires onTap; a
+// press held >= LONG_PRESS_MS fires onLongPress instead (and suppresses the
+// tap). Uses Pointer Events so mouse + touch share one path; the synthesized
+// click is swallowed so it can't double-fire onTap.
+const LONG_PRESS_MS = 400;
+function attachTapOrLongPress(btn, onTap, onLongPress) {
+  let timer = null;
+  let longFired = false;
+  const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  btn.addEventListener('pointerdown', () => {
+    longFired = false;
+    clear();
+    timer = setTimeout(() => { longFired = true; timer = null; try { onLongPress(); } catch (e) { console.error('[battle-ui] longpress failed', e); } }, LONG_PRESS_MS);
+  });
+  btn.addEventListener('pointerup', () => {
+    if (timer) { clear(); if (!longFired) { try { onTap(); } catch (e) { console.error('[battle-ui] tap failed', e); } } }
+  });
+  btn.addEventListener('pointerleave', clear);
+  btn.addEventListener('pointercancel', clear);
+  // Swallow the native click (pointer events already drive tap/long-press).
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
 // ---- v4 typed-move action buttons -------------------------------------------
@@ -269,16 +293,25 @@ function getMySnapshot() {
  * canBattle() (stamina >= 25 and not an egg); if the glue isn't present we
  * don't have enough information to refuse, so we allow it (demo/offline use).
  */
-function canStartBattle() {
+function canStartBattle(kind) {
   if (window.SlimeGame && typeof window.SlimeGame.canBattle === 'function') {
     try {
       if (!window.SlimeGame.canBattle()) {
-        if (typeof window.SlimeGame.toast === 'function') window.SlimeGame.toast(t('battle.tooTired'));
-        else alert(t('battle.tooTired'));
+        uiToast(t('battle.tooTired'));
         return false;
       }
     } catch (err) {
       console.error('[battle-ui] SlimeGame.canBattle() failed', err);
+    }
+  }
+  // v14A (§3): wild/rival battles consume a battle charge; refuse at 0. Local QR
+  // PvP (kind 'pvp') is never gated. The glue toasts the countdown on refusal.
+  if ((kind === 'wild' || kind === 'rival') &&
+      window.SlimeGame && typeof window.SlimeGame.consumeBattleCharge === 'function') {
+    try {
+      if (!window.SlimeGame.consumeBattleCharge(kind)) return false;
+    } catch (err) {
+      console.error('[battle-ui] consumeBattleCharge failed', err);
     }
   }
   return true;
@@ -355,6 +388,16 @@ function renderMenu() {
 
   wrap.appendChild(el('h2', null, t('battle.title')));
 
+  // v14A (§3): remaining battle charges (wild/rival cost 1 each; +1 / 5 min).
+  if (window.SlimeGame && typeof window.SlimeGame.getBattleCharges === 'function') {
+    try {
+      const bc = window.SlimeGame.getBattleCharges();
+      wrap.appendChild(el('div', 'bui-charges', t('battle.charges', { n: bc.charges, max: bc.max })));
+    } catch (err) {
+      console.error('[battle-ui] getBattleCharges failed', err);
+    }
+  }
+
   const randomBtn = el('button', 'bui-btn', t('battle.hub.random'));
   randomBtn.onclick = startWildBattle;
 
@@ -403,7 +446,7 @@ function openLocalPanel() {
 }
 
 function startWildBattle() {
-  if (!canStartBattle()) return;
+  if (!canStartBattle('wild')) return;
   const mySnap = getMySnapshot();
   const seed = (Math.random() * 0xFFFFFFFF) >>> 0;
   const oppSnap = generateWildOpponent(mySnap.level, (seed ^ 0xBEEF) >>> 0);
@@ -483,7 +526,7 @@ function buildRivalRow(entry) {
 }
 
 function startRivalBattle(entry) {
-  if (!canStartBattle()) return;
+  if (!canStartBattle('rival')) return;
   const mySnap = getMySnapshot();
   const seed = (Math.random() * 0xFFFFFFFF) >>> 0;
   // Same flow as a wild battle (side B = ghost, piloted by pickAction), but the
@@ -524,7 +567,7 @@ function backToMenuButton(onBack) {
 }
 
 function startHostFlow() {
-  if (!canStartBattle()) return;
+  if (!canStartBattle('pvp')) return;
   const wrap = renderLinkContainer();
   if (!wrap) return;
   const mySnap = getMySnapshot();
@@ -600,7 +643,7 @@ function connectAsGuest(hostId, wrap) {
 }
 
 function startJoinQrFlow() {
-  if (!canStartBattle()) return;
+  if (!canStartBattle('pvp')) return;
   const wrap = renderLinkContainer();
   if (!wrap) return;
 
@@ -629,7 +672,7 @@ function startJoinQrFlow() {
 }
 
 function startJoinCodeFlow() {
-  if (!canStartBattle()) return;
+  if (!canStartBattle('pvp')) return;
   const wrap = renderLinkContainer();
   if (!wrap) return;
 
@@ -742,7 +785,9 @@ function runBattleScreen({ snapA, snapB, mySide, mode, engineSeed, net, bridge, 
         btn.dataset.usable = usable ? '1' : '0';
         btn.disabled = !usable;
         if (turnsLeft > 0) btn.appendChild(el('span', 'bui-cd-badge', `⏳${turnsLeft}`));
-        if (usable) btn.onclick = () => openMoveConfirm(mv);
+        // v14A (§6): TAP commits the move immediately; LONG-PRESS (~400ms) opens
+        // the move-details popup WITHOUT committing.
+        if (usable) attachTapOrLongPress(btn, () => handleLocalAction(mv.id), () => openMoveConfirm(mv));
         actionsRow.appendChild(btn);
       });
       return;
@@ -758,9 +803,10 @@ function runBattleScreen({ snapA, snapB, mySide, mode, engineSeed, net, bridge, 
     });
   }
 
-  // v8: tapping a move opens a confirm card (icon+name, element, power, cooldown,
-  // fast, effectiveness vs the opponent's element). Confirm commits the turn;
-  // Cancel returns to move selection (turn NOT spent). battle-ui owns this DOM.
+  // v14A (§6): LONG-PRESSING a move opens this move-DETAILS card (icon+name,
+  // element, power, cooldown, fast, effects, effectiveness vs the opponent's
+  // element). It is inspect-only now — it NEVER commits the move (a normal tap
+  // commits). Close/Cancel/backdrop just dismiss it. battle-ui owns this DOM.
   function openMoveConfirm(mv) {
     if (animating || !mv) return;
     const oppEl = (oppSnap && (oppSnap.element || (oppSnap.genome && oppSnap.genome.element))) ||
@@ -769,7 +815,7 @@ function runBattleScreen({ snapA, snapB, mySide, mode, engineSeed, net, bridge, 
     const overlay = el('div', 'bui-confirm-overlay');
     const card = el('div', 'bui-confirm-card');
     const icon = ELEMENT_ICON[mv.element] || ELEMENT_ICON.none;
-    card.appendChild(el('div', 'bui-confirm-title', t('confirm.moveTitle', { move: `${icon} ${mv.name || mv.id}` })));
+    card.appendChild(el('div', 'bui-confirm-title', `${icon} ${mv.name || mv.id}`));
 
     const lines = el('div', 'bui-confirm-lines');
     const noDmg = !!(mv.effect && mv.effect.noDamage);
@@ -796,14 +842,11 @@ function runBattleScreen({ snapA, snapB, mySide, mode, engineSeed, net, bridge, 
     card.appendChild(lines);
 
     const actions = el('div', 'bui-confirm-actions');
-    const cancelBtn = el('button', 'bui-btn bui-btn-secondary', t('confirm.cancel'));
-    const okBtn = el('button', 'bui-btn', t('confirm.confirm'));
+    const closeBtn = el('button', 'bui-btn', t('confirm.close'));
     const close = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
-    cancelBtn.onclick = close;
-    okBtn.onclick = () => { close(); handleLocalAction(mv.id); };
+    closeBtn.onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
-    actions.appendChild(cancelBtn);
-    actions.appendChild(okBtn);
+    actions.appendChild(closeBtn);
     card.appendChild(actions);
     overlay.appendChild(card);
     root.appendChild(overlay);
