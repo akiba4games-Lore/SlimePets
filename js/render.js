@@ -448,7 +448,7 @@ function ears(style, L, pal) {
       case 'bunny': {
         // v16.2: player-drawn bunny ear (traced). Outer -> pet body+outline,
         // inner -> blush. Tall ear, drawn once per side (mirrored), tilted out.
-        const ay = topY + 8;
+        const ay = topY + 18; // v16.4: 10px lower (was +8)
         const mxc = mx + flip * 2;
         const Hr = w * 1.35;
         const SY = Hr / 2;
@@ -464,7 +464,7 @@ function ears(style, L, pal) {
         const eFill = partColor('bunnyOuter', 'fill', pal, 'body');
         const eStroke = partColor('bunnyOuter', 'stroke', pal, 'outline');
         const eInner = partColor('bunnyOuter', 'inner', pal, 'blush');
-        const rot = flip * 12;
+        const rot = flip * 17; // v16.4: +5° outward (was 12)
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
           `<path d="${mapEar(partUnit('bunnyOuter', BUNNY_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
           `<path d="${mapEar(BUNNY_INNER)}" fill="${eInner}"/></g>`;
