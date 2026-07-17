@@ -34,7 +34,7 @@
 </head>
 <body>
 <h1>✏️ Editor parti SlimePets</h1>
-<p class="hint">Scegli una parte: si carica la <b>forma attuale</b> con i suoi punti. Trascina i <b>punti viola</b> per spostarli (le maniglie seguono); trascina i <b>pallini bianchi</b> per curvare. <b>Doppio-click</b> su un punto per toglierlo, o su un punto vuoto per aggiungerne uno. A destra vedi lo slime dal vivo. <b>Applica</b> salva nel gioco; <b>Copia path</b> te lo copia da mandarmi.</p>
+<p class="hint">Scegli una parte: si carica la <b>forma attuale</b> con i suoi punti. Trascina i <b>punti viola</b> per spostarli (le maniglie seguono); trascina i <b>pallini bianchi</b> per curvare. <b>Clicca un punto per selezionarlo</b> (diventa rosa), poi <b>🗑 Cancella punto</b> (o tasto Canc) per toglierlo. Per aggiungere: attiva <b>➕ Aggiungi punto</b> e clicca sul bordo. A destra vedi lo slime dal vivo. <b>Applica</b> salva nel gioco; <b>Copia path</b> te lo copia da mandarmi.</p>
 
 <div class="wrap">
   <div class="col">
@@ -42,6 +42,8 @@
       <span class="lbl" style="margin:0">Parte:</span>
       <select id="part"></select>
       <button id="handles" class="on">Maniglie</button>
+      <button id="addmode">➕ Aggiungi punto</button>
+      <button id="delpt">🗑 Cancella punto</button>
       <button id="reload">↺ Ricarica originale</button>
     </div>
     <svg id="board" width="440" height="440" viewBox="0 0 440 440"></svg>
@@ -119,7 +121,7 @@ const ELCOL = { none:'#c9b6ff', water:'#8fd0ff', fire:'#ff9e6b', grass:'#9be7c4'
 const CX=220, CY=220;
 let nodes=[];        // [{a:[x,y], in:[x,y], out:[x,y]}] in CANVAS coords
 let halfW=165, halfH=165, aspect=1;
-let showHandles=true, element='none', drag=null;
+let showHandles=true, element='none', drag=null, selected=null, addMode=false;
 const base = Pet.generateGenome(0x5eed1234);
 
 const board=document.getElementById('board'), preview=document.getElementById('preview'), partSel=document.getElementById('part'), stageSel=document.getElementById('stage'), out=document.getElementById('out');
@@ -155,6 +157,7 @@ function loadPart(){
   halfW = base165; halfH = base165/aspect;
   const un = parseUnit(unit);
   nodes = un.map(nd=>({ a:u2c(nd.a), in:u2c(nd.in), out:u2c(nd.out) }));
+  selected=null;
   renderPartColors();
   redraw();
 }
@@ -228,7 +231,7 @@ function redraw(){
       svg+=`<circle class="handle" cx="${nd.out[0]}" cy="${nd.out[1]}" r="4" data-i="${i}" data-t="out"/>`;
     });
   }
-  nodes.forEach((nd,i)=>{ svg+=`<circle class="anchor" cx="${nd.a[0]}" cy="${nd.a[1]}" r="6.5" data-i="${i}" data-t="a"/>`; });
+  nodes.forEach((nd,i)=>{ const sel=i===selected; svg+=`<circle class="anchor" cx="${nd.a[0]}" cy="${nd.a[1]}" r="${sel?8.5:6.5}" ${sel?'style="fill:#ff3399"':''} data-i="${i}" data-t="a"/>`; });
   board.innerHTML=svg;
   renderPreview();
 }
@@ -236,7 +239,19 @@ function redraw(){
 function boardPt(ev){ const r=board.getBoundingClientRect(); return [(ev.clientX-r.left)*440/r.width, (ev.clientY-r.top)*440/r.height]; }
 board.addEventListener('pointerdown',(ev)=>{
   const t=ev.target;
-  if(t.tagName==='circle'){ drag={i:+t.getAttribute('data-i'), t:t.getAttribute('data-t')}; board.setPointerCapture(ev.pointerId); }
+  if(t.tagName==='circle'){
+    drag={i:+t.getAttribute('data-i'), t:t.getAttribute('data-t')};
+    if(drag.t==='a') selected=drag.i;
+    try{ board.setPointerCapture(ev.pointerId); }catch(_){}
+    redraw(); return;
+  }
+  // click on empty area
+  if(addMode){
+    const p=boardPt(ev); let best=0, bd=1e9;
+    for(let i=0;i<nodes.length;i++){ const j=(i+1)%nodes.length; const mx=(nodes[i].a[0]+nodes[j].a[0])/2, my=(nodes[i].a[1]+nodes[j].a[1])/2; const d=(mx-p[0])**2+(my-p[1])**2; if(d<bd){bd=d;best=i;} }
+    nodes.splice(best+1,0,{ a:[p[0],p[1]], in:[p[0]-14,p[1]], out:[p[0]+14,p[1]] });
+    selected=best+1; redraw();
+  } else { selected=null; redraw(); }
 });
 board.addEventListener('pointermove',(ev)=>{
   if(!drag) return; const p=boardPt(ev); const nd=nodes[drag.i];
@@ -245,21 +260,13 @@ board.addEventListener('pointermove',(ev)=>{
   redraw();
 });
 board.addEventListener('pointerup',()=>{ drag=null; });
-board.addEventListener('dblclick',(ev)=>{
-  const t=ev.target;
-  if(t.tagName==='circle' && t.getAttribute('data-t')==='a'){
-    if(nodes.length>3){ nodes.splice(+t.getAttribute('data-i'),1); redraw(); }
-    return;
-  }
-  // add a node at the clicked position (between nearest two anchors)
-  const p=boardPt(ev); let best=0, bd=1e9;
-  for(let i=0;i<nodes.length;i++){ const j=(i+1)%nodes.length; const mx=(nodes[i].a[0]+nodes[j].a[0])/2, my=(nodes[i].a[1]+nodes[j].a[1])/2; const d=(mx-p[0])**2+(my-p[1])**2; if(d<bd){bd=d;best=i;} }
-  nodes.splice(best+1,0,{ a:[p[0],p[1]], in:[p[0]-14,p[1]], out:[p[0]+14,p[1]] });
-  redraw();
-});
+function deleteSelected(){ if(selected!=null && nodes.length>3){ nodes.splice(selected,1); selected=null; redraw(); } }
+window.addEventListener('keydown',(ev)=>{ if((ev.key==='Delete'||ev.key==='Backspace') && selected!=null){ ev.preventDefault(); deleteSelected(); } });
 
 document.getElementById('handles').onclick=(e)=>{ showHandles=!showHandles; e.target.classList.toggle('on',showHandles); redraw(); };
-document.getElementById('reload').onclick=()=>{ const key=partSel.value; delete window.SLIME_PART_OVERRIDES[key]; delete window.SLIME_PART_ASPECTS[key]; loadPart(); flash('originale caricato'); };
+document.getElementById('addmode').onclick=(e)=>{ addMode=!addMode; e.target.classList.toggle('on',addMode); };
+document.getElementById('delpt').onclick=deleteSelected;
+document.getElementById('reload').onclick=()=>{ const key=partSel.value; delete window.SLIME_PART_OVERRIDES[key]; delete window.SLIME_PART_ASPECTS[key]; selected=null; loadPart(); flash('originale caricato'); };
 document.getElementById('apply').onclick=()=>{ applyLive(); localStorage.setItem('slime_part_overrides',JSON.stringify(window.SLIME_PART_OVERRIDES)); localStorage.setItem('slime_part_aspects',JSON.stringify(window.SLIME_PART_ASPECTS)); flash('salvato ✓'); };
 document.getElementById('reset').onclick=()=>{ const key=partSel.value; delete window.SLIME_PART_OVERRIDES[key]; delete window.SLIME_PART_ASPECTS[key]; localStorage.setItem('slime_part_overrides',JSON.stringify(window.SLIME_PART_OVERRIDES)); localStorage.setItem('slime_part_aspects',JSON.stringify(window.SLIME_PART_ASPECTS)); loadPart(); flash('modifica rimossa'); };
 document.getElementById('copy').onclick=async()=>{ try{ await navigator.clipboard.writeText(out.value); flash('copiato ✓'); }catch(_){} };
