@@ -201,7 +201,12 @@ const BATTLE_MAX_CHARGES = 3;
 // v14B (§14B) — Personality flavor. Modest tweaks to action outcomes + decay so
 // no personality is broken or OP; a pet whose personality matches none of a given
 // branch keeps the pre-14B baseline exactly (all multipliers = 1, bonuses = 0).
-const LAZY_REFUSE_BONUS = 0.15;          // Pigro: +15% flat training-refusal chance
+// v0.15: per-exercise strike chance escalates with consecutive same-exercise
+// reps (1st,2nd,3rd,4th,5th+); Pigro adds +10% on every tier. A strike locks
+// that exercise for TRAIN_BLOCK_MS (scolding does NOT clear it).
+const STRIKE_PROBS = [0.10, 0.20, 0.50, 0.70, 0.90];
+const LAZY_STRIKE_BONUS = 0.10;
+const LAZY_REFUSE_BONUS = 0.15;          // (legacy) Pigro flat refusal — unused since v0.15
 const LAZY_STAMINA_MULT = 0.75;          // Pigro: slower stamina regen (0.75×)
 const SLEEPY_STAMINA_MULT = 1.15;        // Dormiglione: small awake stamina-regen bonus
 const SLEEPY_SLEEP_HEAL_MULT = 1.4;      // Dormiglione: sleep restores more HP (1.4×)
@@ -1004,9 +1009,8 @@ export function doScold() {
   scoldSadPose = true;
   const poopValid = pet.poopInRoom && !pet.poopScolded;
   const misValid = pet.lastMisbehaviorAt > 0 && now - pet.lastMisbehaviorAt <= MISBEHAVIOR_WINDOW_MS;
-  // v0.15: a per-exercise strike also counts as a valid scold target.
-  const exStrikeValid = !!(pet.exBlock && Object.keys(pet.exBlock).some(k => (pet.exBlock[k] || 0) > now));
-  const strikeValid = ((pet.trainBlockUntil || 0) > now) || exStrikeValid; // scolding ends a training strike
+  // v0.15: per-exercise strikes are NOT cleared by scolding — you must wait it out.
+  const strikeValid = (pet.trainBlockUntil || 0) > now; // scolding ends a (global) training strike
   if (poopValid || misValid || strikeValid) {
     pet.scoldCount = (pet.scoldCount || 0) + 1; // valid scold (feeds 'scold' unlocks)
     pet.education = clamp(pet.education + 8, 0, 100);
@@ -1014,7 +1018,7 @@ export function doScold() {
     c.happiness = clamp(c.happiness - 3, 0, 100);
     if (poopValid) pet.poopScolded = true;
     if (misValid) pet.lastMisbehaviorAt = 0;
-    if (strikeValid) { pet.trainBlockUntil = 0; pet.exBlock = {}; pet.sameExCount = 0; refreshTrain(); } // training available again
+    if (strikeValid) { pet.trainBlockUntil = 0; refreshTrain(); } // training available again
     reaction('📢');
     toast(t('toast.scoldLearn', { name: pet.name }));
     checkLearning(); // education may have crossed a milestone
@@ -1215,21 +1219,6 @@ export function doTrain(name) {
   }
   // Training (success or refusal) is an action — clear the scold sulk.
   scoldSadPose = false;
-  // Refusal (free): laziness + spoiled, tempered by education. A refusal puts the
-  // pet ON STRIKE — ALL training locks for 5 min (clear early by scolding).
-  let refuseChance = (pet.genome.laziness * 0.35 + pet.spoiled / 300) * (1 - pet.education / 200);
-  if (isPersona(pet, 'lazy')) refuseChance += LAZY_REFUSE_BONUS; // v14B: Pigro refuses more
-  if (Math.random() < refuseChance) {
-    pet.lastMisbehaviorAt = Date.now();
-    pet.trainBlockUntil = Date.now() + TRAIN_BLOCK_MS;
-    const idx = Math.floor(Math.random() * LAZY_LINE_COUNT);
-    toast(t('lazy.' + idx, { name: pet.name }));
-    reaction('💢');
-    playRefuseAnim(); // pet trots on, shakes its head "no no", then leaves
-    refreshTrain();
-    save();
-    return;
-  }
   // v14C: a completed session (special or normal) makes the pet a bit less lazy.
   pet.genome.laziness = clamp((pet.genome.laziness || 0) - LAZY_TRAIN_DROP, 0, 1);
   // v10: Special training — a high-cost gamble that teaches a random move.
@@ -1263,16 +1252,22 @@ export function doTrain(name) {
     save();
     return;
   }
-  // v0.15: repeating the SAME basic exercise 3× in a row puts THAT exercise on
-  // strike (locked out for a while) instead of running — encourages variety.
+  // v0.15: per-exercise STRIKE roll — the chance escalates with consecutive reps
+  // of the SAME exercise (10/20/50/70/90%), +10% for Pigro. On a strike THAT
+  // exercise locks for 5 min (scolding won't clear it); a different exercise
+  // resets the streak.
   const consec = (pet.lastExercise === name) ? (pet.sameExCount || 0) + 1 : 1;
-  if (consec >= 3) {
+  let strikeChance = STRIKE_PROBS[Math.min(consec, STRIKE_PROBS.length) - 1];
+  if (isPersona(pet, 'lazy')) strikeChance += LAZY_STRIKE_BONUS;
+  if (Math.random() < strikeChance) {
     pet.exBlock = pet.exBlock || {};
     pet.exBlock[name] = Date.now() + TRAIN_BLOCK_MS;
-    pet.sameExCount = 0;
     pet.lastExercise = name;
+    pet.sameExCount = 0; // reset after serving the strike
+    pet.lastMisbehaviorAt = Date.now();
     toast(t('toast.exStrike', { name: pet.name, ex: t('train.' + name.toLowerCase()), time: fmtDuration(TRAIN_BLOCK_MS) }));
     reaction('💢');
+    playRefuseAnim(); // pet trots on, shakes its head "no no", then leaves
     refreshTrain();
     save();
     return;
@@ -1846,7 +1841,13 @@ function refreshTrain() {
     }
     const ex = EXERCISES[btn.dataset.ex];
     if (!ex) return;
-    btn.classList.toggle('disabled', blocked || pet.stage === 'egg' || tooTired);
+    // v0.15: a single exercise can be on strike (locked ~5 min). Show a countdown
+    // in its cost slot; restore the stamina cost once it frees up.
+    const exUntil = (pet.exBlock && pet.exBlock[btn.dataset.ex]) || 0;
+    const exBlocked = Date.now() < exUntil;
+    btn.classList.toggle('disabled', blocked || pet.stage === 'egg' || tooTired || exBlocked);
+    const costEl = btn.querySelector('.ex-cost');
+    if (costEl) costEl.textContent = exBlocked ? fmtDuration(exUntil - Date.now()) : `${TRAIN_STAMINA_COST}⚡`;
   });
 }
 
