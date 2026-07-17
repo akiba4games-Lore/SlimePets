@@ -30,6 +30,7 @@
   .handle { fill:#fff; stroke:#ff77b3; stroke-width:2; cursor:grab; }
   .hline { stroke:#ff9ecb; stroke-width:1; stroke-dasharray:3 3; }
   .shape { fill:#c9b6ff55; stroke:#7a55c8; stroke-width:2.5; stroke-linejoin:round; }
+  .guide { fill:#00000010; stroke:#9a8ac0; stroke-width:2; stroke-dasharray:6 5; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -96,11 +97,16 @@ const PART_SLOTS = {
   fluffy: [], spiky: [],
   devil: [['fill','Corno','horn'],['stroke','Bordo','accentDark']],
   earOuter: [['fill','Orecchio','body'],['stroke','Bordo','outline'],['inner','Interno','blush']],
+  earInner: [],
   roundOuter: [['fill','Orecchio','body'],['stroke','Bordo','outline'],['inner','Interno','blush']],
   fluffyEar: [['fill','Orecchio','body'],['stroke','Bordo','outline'],['inner','Interno','blush']],
+  fluffyEarInner: [],
   bunnyOuter: [['fill','Orecchio','body'],['stroke','Bordo','outline'],['inner','Interno','blush']],
+  bunnyInner: [],
   fangMouth: [['line','Bocca','outline'],['toothFill','Dente','bianco'],['toothOutline','Bordo dente','outline']],
+  fangTooth: [],
   openMouth: [['cavity','Cavità','eye'],['outline','Bordo','outline'],['tongue','Lingua','blush']],
+  openTongue: [],
 };
 const PAL_ROLES = ['body','outline','blush','eye','accent','belly','horn'];
 function hslToHex(str){
@@ -115,11 +121,21 @@ const PARTS = {
   spiky:     { label:'Corpo — spiky',  genome:{ bodyShape:'spiky' } },
   devil:     { label:'Corna — devil',  genome:{ bodyShape:'blob', horn:'devil' } },
   earOuter:  { label:'Orecchie — cat', genome:{ bodyShape:'blob', ears:'cat' } },
+  earInner:  { label:'Orecchie — cat (interno)', genome:{ bodyShape:'blob', ears:'cat' } },
   roundOuter:{ label:'Orecchie — round', genome:{ bodyShape:'blob', ears:'round' } },
   fluffyEar: { label:'Orecchie — fluffy', genome:{ bodyShape:'blob', ears:'fluffy' } },
+  fluffyEarInner:{ label:'Orecchie — fluffy (interno)', genome:{ bodyShape:'blob', ears:'fluffy' } },
   bunnyOuter:{ label:'Orecchie — bunny', genome:{ bodyShape:'blob', ears:'bunny' } },
+  bunnyInner:{ label:'Orecchie — bunny (interno)', genome:{ bodyShape:'blob', ears:'bunny' } },
   fangMouth: { label:'Bocca — fang',   genome:{ bodyShape:'blob', mouth:'fang' } },
+  fangTooth: { label:'Bocca — fang (dente)', genome:{ bodyShape:'blob', mouth:'fang' } },
   openMouth: { label:'Bocca — open',   genome:{ bodyShape:'blob', mouth:'open' } },
+  openTongue:{ label:'Bocca — open (lingua)', genome:{ bodyShape:'blob', mouth:'open' } },
+};
+// inner parts show their outer sibling as a dashed reference guide.
+const PARENT = {
+  earInner:'earOuter', fluffyEarInner:'fluffyEar', bunnyInner:'bunnyOuter',
+  fangTooth:'fangMouth', openTongue:'openMouth',
 };
 const ELEMENTS = ['none','water','fire','grass','earth','lightning','dark','light'];
 const ELCOL = { none:'#c9b6ff', water:'#8fd0ff', fire:'#ff9e6b', grass:'#9be7c4', earth:'#d9b38c', lightning:'#ffe08a', dark:'#8a7bb0', light:'#fff2b0' };
@@ -226,9 +242,20 @@ function renderPalette(){
     wrap.appendChild(inp); wrap.appendChild(document.createTextNode(r)); box.appendChild(wrap);
   }
 }
+// map a unit path string to board coords using the current frame (like u2c).
+function unitToBoard(unit){
+  let i=0;
+  return unit.replace(/-?\d*\.?\d+/g, n=>{ const v=parseFloat(n); return ((i++%2===0)?(CX+v*halfW):(CY+v*halfH)).toFixed(2); });
+}
 function redraw(){
   applyLive();
-  let svg=`<path class="shape" d="${nodesToBoard()}"/>`;
+  let svg='';
+  const par = PARENT[partSel.value];
+  if(par){
+    const pu = (window.SLIME_PART_OVERRIDES[par]) || R.BUILTIN_PART_UNITS[par];
+    if(pu) svg += `<path class="guide" d="${unitToBoard(pu)}"/>`;
+  }
+  svg += `<path class="shape" d="${nodesToBoard()}"/>`;
   if(showHandles){
     nodes.forEach((nd,i)=>{
       svg+=`<line class="hline" x1="${nd.a[0]}" y1="${nd.a[1]}" x2="${nd.in[0]}" y2="${nd.in[1]}"/>`;

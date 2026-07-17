@@ -329,7 +329,7 @@ function fangMouth(x, y, w, pal) {
     });
   };
   return `<path d="${map(partUnit('fangMouth', FANG2_MOUTH))}" fill="${lineC}"/>` +
-    `<path d="${map(FANG2_TOOTH)}" fill="${toothFill}" stroke="${toothOC}" stroke-width="${(w * 0.05).toFixed(2)}" stroke-linejoin="round"/>`;
+    `<path d="${map(partUnit('fangTooth', FANG2_TOOTH))}" fill="${toothFill}" stroke="${toothOC}" stroke-width="${(w * 0.05).toFixed(2)}" stroke-linejoin="round"/>`;
 }
 
 const OPEN_MOUTH = 'M 1.0424 -1.0111 C 1.0361 -0.9534 0.8083 -0.9235 0.8081 -0.9031 C 0.7911 0.227 0.6279 0.589 0.4824 0.7834 C 0.2885 0.9979 0.1939 0.9893 0.0558 0.9895 C -0.1943 0.9517 -0.2546 0.8869 -0.4158 0.6521 C -0.639 0.2706 -0.8015 -0.4358 -0.7838 -0.8982 C -0.811 -0.897 -1.0403 -0.9443 -1.0061 -0.9375 C -0.4808 -0.751 -0.3758 -1.1534 0.0444 -1.1191 C 0.4687 -1.1584 0.5616 -0.7412 1.0424 -1.0111 Z';
@@ -353,7 +353,7 @@ function openMouth(x, y, w, pal) {
     });
   };
   return `<path d="${map(partUnit('openMouth', OPEN_MOUTH))}" fill="${cavityC}" stroke="${oc}" stroke-width="2" stroke-linejoin="round"/>` +
-    `<path d="${map(OPEN_TONGUE)}" fill="${tongueC}"/>`;
+    `<path d="${map(partUnit('openTongue', OPEN_TONGUE))}" fill="${tongueC}"/>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -448,7 +448,7 @@ function ears(style, L, pal) {
         const eInner = partColor('earOuter', 'inner', pal, 'blush');
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
           `<path d="${mapEar(partUnit('earOuter', EAR_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="${mapEar(EAR_INNER)}" fill="${eInner}"/></g>`;
+          `<path d="${mapEar(partUnit('earInner', EAR_INNER))}" fill="${eInner}"/></g>`;
       }
       case 'bunny': {
         // v16.2: player-drawn bunny ear (traced). Outer -> pet body+outline,
@@ -473,7 +473,7 @@ function ears(style, L, pal) {
         const rot = flip * -12; // v16.11: 1° more outward (was -13)
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
           `<path d="${mapEar(partUnit('bunnyOuter', BUNNY_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="${mapEar(BUNNY_INNER)}" fill="${eInner}"/></g>`;
+          `<path d="${mapEar(partUnit('bunnyInner', BUNNY_INNER))}" fill="${eInner}"/></g>`;
       }
       case 'floppy':
         return `<path d="M ${mx} ${topY + 8} q ${flip * 26} ${-4} ${flip * 30} ${28} q ${flip * -14} ${8} ${flip * -26} ${-6} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
@@ -523,7 +523,7 @@ function ears(style, L, pal) {
         const rot = flip * 90;
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
           `<path d="${mapEar(partUnit('fluffyEar', FEAR_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="${mapEar(FEAR_INNER)}" fill="${eInner}"/></g>`;
+          `<path d="${mapEar(partUnit('fluffyEarInner', FEAR_INNER))}" fill="${eInner}"/></g>`;
       }
       default:
         return '';
@@ -886,22 +886,32 @@ export const BUILTIN_PART_UNITS = {
   spiky: SPIKY_UNIT,
   devil: DEVIL_UNIT,
   earOuter: EAR_OUTER,
+  earInner: EAR_INNER,
   roundOuter: ROUND_OUTER,
   fluffyEar: FEAR_OUTER,
+  fluffyEarInner: FEAR_INNER,
   bunnyOuter: BUNNY_OUTER,
+  bunnyInner: BUNNY_INNER,
   fangMouth: FANG2_MOUTH,
+  fangTooth: FANG2_TOOTH,
   openMouth: OPEN_MOUTH,
+  openTongue: OPEN_TONGUE,
 };
 export const BUILTIN_PART_ASPECTS = {
   fluffy: 1,
   spiky: 1,
   devil: DEVIL_ASPECT,
   earOuter: EAR_ASPECT,
+  earInner: EAR_ASPECT,
   roundOuter: ROUND_ASPECT,
   fluffyEar: FEAR_ASPECT,
+  fluffyEarInner: FEAR_ASPECT,
   bunnyOuter: BUNNY_ASPECT,
+  bunnyInner: BUNNY_ASPECT,
   fangMouth: FANG2_ASPECT,
+  fangTooth: FANG2_ASPECT,
   openMouth: OPEN_ASPECT,
+  openTongue: OPEN_ASPECT,
 };
 // The pet palette for a genome (so the editor can seed its color pickers).
 export function paletteOf(genome) { return palette(sanitizeGenome(genome)); }
