@@ -98,8 +98,13 @@
 </main>
 
 <script type="module">
-import * as Pet from './js/pet.js';
-import { renderPet } from './js/render.js';
+// Dev tool: ALWAYS load fresh modules. fetch(cache:'reload') updates the HTTP
+// cache entries, then the dynamic imports (fresh per-page module registry) pick
+// them up — so edits to pet.js/render.js show up on a simple page refresh.
+await fetch('./js/pet.js', { cache: 'reload' });
+await fetch('./js/render.js', { cache: 'reload' });
+const Pet = await import('./js/pet.js');
+const { renderPet } = await import('./js/render.js');
 
 const NS = 'http://www.w3.org/2000/svg';
 const STORE = 'slimepets_gallery_excluded_v1';
