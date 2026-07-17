@@ -286,7 +286,7 @@ const OPEN_ASPECT = 1.2148;
 // v15.9: player-drawn open mouth (2 traced paths). Dark cavity -> pal.eye +
 // pet outline; the inner blob -> blush (tongue). Scaled to the mouth width.
 function openMouth(x, y, w, pal) {
-  const SX = w * 0.5;
+  const SX = w * 0.4; // v15.9: 20% smaller (was 0.5)
   const SY = SX / OPEN_ASPECT;
   const cyc = y + SY * 0.55;
   const oc = pal.outline;
