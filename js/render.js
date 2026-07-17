@@ -457,7 +457,8 @@ function ears(style, L, pal) {
           let i = 0;
           return unit.replace(/-?\d*\.?\d+/g, (n) => {
             const v = parseFloat(n);
-            const out = (i++ % 2 === 0) ? (mxc + v * SX * flip) : (ay + (v - 1) * SY);
+            // v16.5: base shape mirrored horizontally (-v) to fix flip.
+            const out = (i++ % 2 === 0) ? (mxc - v * SX * flip) : (ay + (v - 1) * SY);
             return out.toFixed(2);
           });
         };
