@@ -9,7 +9,7 @@
   * { box-sizing:border-box; }
   body { margin:0; font-family:"Baloo 2","Quicksand","Segoe UI",system-ui,sans-serif; color:var(--ink); background:linear-gradient(160deg,var(--bg1),var(--bg2)); padding:14px; }
   h1 { font-size:20px; color:var(--pink-d); margin:0 0 4px; }
-  .hint { font-size:12px; color:var(--ink-soft); font-weight:600; margin:0 0 12px; max-width:900px; }
+  .hint { font-size:12px; color:var(--ink-soft); font-weight:600; margin:0 0 12px; max-width:920px; }
   .wrap { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
   .col { background:var(--panel); border-radius:16px; box-shadow:var(--shadow); padding:12px; }
   .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
@@ -18,30 +18,31 @@
   button.on { background:#d9c7ff; }
   #board { touch-action:none; border-radius:12px; background:
       linear-gradient(#f3ecff 1px, transparent 1px) 0 0/22px 22px,
-      linear-gradient(90deg,#f3ecff 1px, transparent 1px) 0 0/22px 22px,
-      #fff; display:block; cursor:crosshair; }
+      linear-gradient(90deg,#f3ecff 1px, transparent 1px) 0 0/22px 22px, #fff; display:block; }
   .lbl { font-size:12px; font-weight:800; color:var(--ink-soft); margin:8px 0 4px; }
-  #out { width:340px; height:120px; font-family:ui-monospace,Consolas,monospace; font-size:11px; border:1px solid var(--line); border-radius:10px; padding:8px; color:var(--ink); background:#fff; }
+  #out { width:340px; height:100px; font-family:ui-monospace,Consolas,monospace; font-size:11px; border:1px solid var(--line); border-radius:10px; padding:8px; color:var(--ink); background:#fff; }
   #preview { width:260px; height:260px; background:radial-gradient(circle at 50% 40%,#fff,#ffeaf5 70%,#ffd9ec); border-radius:14px; display:block; }
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .note { font-size:11px; color:var(--ink-soft); font-weight:600; }
   .swatches { display:flex; gap:6px; }
   .sw { width:22px; height:22px; border-radius:6px; border:2px solid #fff; box-shadow:var(--shadow); cursor:pointer; }
+  .anchor { fill:#8a63d6; stroke:#fff; stroke-width:2; cursor:grab; }
+  .handle { fill:#fff; stroke:#ff77b3; stroke-width:2; cursor:grab; }
+  .hline { stroke:#ff9ecb; stroke-width:1; stroke-dasharray:3 3; }
+  .shape { fill:#c9b6ff55; stroke:#7a55c8; stroke-width:2.5; stroke-linejoin:round; }
 </style>
 </head>
 <body>
 <h1>✏️ Editor parti SlimePets</h1>
-<p class="hint">Scegli la parte, poi <b>clicca sul foglio per mettere i punti</b> attorno alla forma (in senso orario). Trascina i punti per aggiustare. La forma si chiude da sola con curve morbide. A destra vedi lo slime dal vivo. <b>Applica</b> salva la forma nel gioco; <b>Copia path</b> te la copia da mandarmi.</p>
+<p class="hint">Scegli una parte: si carica la <b>forma attuale</b> con i suoi punti. Trascina i <b>punti viola</b> per spostarli (le maniglie seguono); trascina i <b>pallini bianchi</b> per curvare. <b>Doppio-click</b> su un punto per toglierlo, o su un punto vuoto per aggiungerne uno. A destra vedi lo slime dal vivo. <b>Applica</b> salva nel gioco; <b>Copia path</b> te lo copia da mandarmi.</p>
 
 <div class="wrap">
   <div class="col">
     <div class="toolbar">
       <span class="lbl" style="margin:0">Parte:</span>
       <select id="part"></select>
-      <button id="curve" class="on">Curve morbide</button>
-      <button id="undo">↶ Punto</button>
-      <button id="clear">Pulisci</button>
-      <button id="tmpl">◯ Template</button>
+      <button id="handles" class="on">Maniglie</button>
+      <button id="reload">↺ Ricarica originale</button>
     </div>
     <svg id="board" width="440" height="440" viewBox="0 0 440 440"></svg>
   </div>
@@ -57,12 +58,11 @@
     </div>
     <div class="row" style="margin-top:10px">
       <button id="apply" class="accent">✓ Applica al gioco</button>
-      <button id="reset">↺ Ripristina originale</button>
+      <button id="reset">🗑 Rimuovi modifica</button>
     </div>
-    <div class="lbl">Path normalizzato (mandalo a Claude)</div>
+    <div class="lbl">Path normalizzato (mandalo a Claude per renderlo definitivo)</div>
     <textarea id="out" readonly></textarea>
     <div class="row"><button id="copy">Copia path</button> <span class="note" id="copied"></span></div>
-    <p class="note" style="max-width:340px">Le forme salvate valgono per il gioco su questo browser. Per renderle definitive (per tutti), mandami il path copiato.</p>
   </div>
 </div>
 
@@ -70,11 +70,15 @@
 await fetch('./js/pet.js', { cache:'reload' });
 await fetch('./js/render.js', { cache:'reload' });
 const Pet = await import('./js/pet.js');
-const { renderPet } = await import('./js/render.js');
+const R = await import('./js/render.js');
+const renderPet = R.renderPet;
 const NS='http://www.w3.org/2000/svg';
 
 window.SLIME_PART_OVERRIDES = window.SLIME_PART_OVERRIDES || {};
 window.SLIME_PART_ASPECTS = window.SLIME_PART_ASPECTS || {};
+// pick up any previously saved edits
+try { const o=localStorage.getItem('slime_part_overrides'); if(o) Object.assign(window.SLIME_PART_OVERRIDES, JSON.parse(o)); } catch(_){}
+try { const a=localStorage.getItem('slime_part_aspects'); if(a) Object.assign(window.SLIME_PART_ASPECTS, JSON.parse(a)); } catch(_){}
 
 const PARTS = {
   fluffy:    { label:'Corpo — fluffy', genome:{ bodyShape:'fluffy' } },
@@ -87,120 +91,126 @@ const PARTS = {
 const ELEMENTS = ['none','water','fire','grass','earth','lightning','dark','light'];
 const ELCOL = { none:'#c9b6ff', water:'#8fd0ff', fire:'#ff9e6b', grass:'#9be7c4', earth:'#d9b38c', lightning:'#ffe08a', dark:'#8a7bb0', light:'#fff2b0' };
 
-let points = [];           // {x,y} in board coords
-let smooth = true;
-let drag = -1;
-let element = 'none';
+const CX=220, CY=220;
+let nodes=[];        // [{a:[x,y], in:[x,y], out:[x,y]}] in CANVAS coords
+let halfW=165, halfH=165, aspect=1;
+let showHandles=true, element='none', drag=null;
 const base = Pet.generateGenome(0x5eed1234);
 
-const board = document.getElementById('board');
-const preview = document.getElementById('preview');
-const partSel = document.getElementById('part');
-const stageSel = document.getElementById('stage');
-const out = document.getElementById('out');
+const board=document.getElementById('board'), preview=document.getElementById('preview'), partSel=document.getElementById('part'), stageSel=document.getElementById('stage'), out=document.getElementById('out');
+for (const k of Object.keys(PARTS)){ const o=document.createElement('option'); o.value=k; o.textContent=PARTS[k].label; partSel.appendChild(o); }
+const elsBox=document.getElementById('els');
+for (const e of ELEMENTS){ const s=document.createElement('span'); s.className='sw'; s.style.background=ELCOL[e]; s.title=e; s.onclick=()=>{element=e; renderPreview();}; elsBox.appendChild(s); }
 
-for (const k of Object.keys(PARTS)) { const o=document.createElement('option'); o.value=k; o.textContent=PARTS[k].label; partSel.appendChild(o); }
-const elsBox = document.getElementById('els');
-for (const e of ELEMENTS){ const s=document.createElement('span'); s.className='sw'; s.style.background=ELCOL[e]; s.title=e; s.onclick=()=>{element=e; redraw();}; elsBox.appendChild(s); }
-
-// ---- geometry helpers ----
-function bbox(pts){ let a=1e9,b=1e9,c=-1e9,d=-1e9; for(const p of pts){a=Math.min(a,p.x);c=Math.max(c,p.x);b=Math.min(b,p.y);d=Math.max(d,p.y);} return {minx:a,miny:b,maxx:c,maxy:d,cx:(a+c)/2,cy:(b+d)/2,hw:(c-a)/2,hh:(d-b)/2,bw:c-a,bh:d-b}; }
-
-// closed path string through points (board coords). smooth = Catmull-Rom -> cubic bezier.
-function pathFrom(pts, sm){
-  if (pts.length < 2) return '';
-  if (pts.length === 2 || !sm) {
-    return 'M ' + pts.map(p=>`${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ') + ' Z';
+// ---- parse a unit path (M/C…Z) into nodes ----
+function parseUnit(d){
+  const toks=d.match(/[MC]|-?\d*\.?\d+/g); if(!toks) return [];
+  const anchors=[], segs=[]; let k=0;
+  while(k<toks.length){
+    const t=toks[k];
+    if(t==='M'){ anchors.push([+toks[k+1],+toks[k+2]]); k+=3; }
+    else if(t==='C'){ segs.push({c1:[+toks[k+1],+toks[k+2]], c2:[+toks[k+3],+toks[k+4]]}); anchors.push([+toks[k+5],+toks[k+6]]); k+=7; }
+    else k++;
   }
-  const n = pts.length; let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)} `;
-  for (let i=0;i<n;i++){
-    const p0=pts[(i-1+n)%n], p1=pts[i], p2=pts[(i+1)%n], p3=pts[(i+2)%n];
-    const c1x=p1.x+(p2.x-p0.x)/6, c1y=p1.y+(p2.y-p0.y)/6;
-    const c2x=p2.x-(p3.x-p1.x)/6, c2y=p2.y-(p3.y-p1.y)/6;
-    d += `C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} `;
+  const n=segs.length;
+  const nd=[];
+  for(let i=0;i<n;i++){
+    nd.push({ a:anchors[i].slice(), out:segs[i].c1.slice(), in:segs[(i-1+n)%n].c2.slice() });
   }
-  return d + 'Z';
+  return nd;
+}
+const u2c = (p)=>[CX+p[0]*halfW, CY+p[1]*halfH];
+const c2u = (p)=>[(p[0]-CX)/halfW, (p[1]-CY)/halfH];
+
+function loadPart(){
+  const key=partSel.value;
+  const unit = (window.SLIME_PART_OVERRIDES[key]) || R.BUILTIN_PART_UNITS[key];
+  aspect = window.SLIME_PART_ASPECTS[key] || R.BUILTIN_PART_ASPECTS[key] || 1;
+  const base165 = aspect<1 ? 165*aspect : 165;
+  halfW = base165; halfH = base165/aspect;
+  const un = parseUnit(unit);
+  nodes = un.map(nd=>({ a:u2c(nd.a), in:u2c(nd.in), out:u2c(nd.out) }));
+  redraw();
 }
 
-// normalized unit path (coords in [-1,1] over the bbox), matching the game's format.
-function unitPath(pts, sm){
-  if (pts.length < 3) return '';
-  const bx = bbox(pts);
-  const d = pathFrom(pts, sm);
-  let i=0;
-  return d.replace(/-?\d*\.?\d+/g, (n)=>{
-    const v=parseFloat(n);
-    const u=(i++ %2===0)?(v-bx.cx)/bx.hw:(v-bx.cy)/bx.hh;
-    return (Math.round(u*10000)/10000);
-  });
+// nodes(canvas) -> unit path string
+function nodesToUnit(){
+  const n=nodes.length; if(!n) return '';
+  const A=nodes.map(nd=>c2u(nd.a)), I=nodes.map(nd=>c2u(nd.in)), O=nodes.map(nd=>c2u(nd.out));
+  const r=v=>Math.round(v*10000)/10000;
+  let d=`M ${r(A[0][0])} ${r(A[0][1])} `;
+  for(let i=0;i<n;i++){ const j=(i+1)%n; d+=`C ${r(O[i][0])} ${r(O[i][1])} ${r(I[j][0])} ${r(I[j][1])} ${r(A[j][0])} ${r(A[j][1])} `; }
+  return d+'Z';
+}
+// nodes(canvas) -> board path string (canvas coords)
+function nodesToBoard(){
+  const n=nodes.length; if(!n) return '';
+  let d=`M ${nodes[0].a[0]} ${nodes[0].a[1]} `;
+  for(let i=0;i<n;i++){ const j=(i+1)%n; d+=`C ${nodes[i].out[0]} ${nodes[i].out[1]} ${nodes[j].in[0]} ${nodes[j].in[1]} ${nodes[j].a[0]} ${nodes[j].a[1]} `; }
+  return d+'Z';
 }
 
-function currentKey(){ return partSel.value; }
-
-function apply(save){
-  const key = currentKey();
-  const up = unitPath(points, smooth);
-  const bx = bbox(points);
-  if (up) {
-    window.SLIME_PART_OVERRIDES[key] = up;
-    window.SLIME_PART_ASPECTS[key] = bx.bw / bx.bh;
-  } else {
-    delete window.SLIME_PART_OVERRIDES[key];
-    delete window.SLIME_PART_ASPECTS[key];
-  }
-  if (save) {
-    localStorage.setItem('slime_part_overrides', JSON.stringify(window.SLIME_PART_OVERRIDES));
-    localStorage.setItem('slime_part_aspects', JSON.stringify(window.SLIME_PART_ASPECTS));
-  }
+function applyLive(){
+  const key=partSel.value;
+  window.SLIME_PART_OVERRIDES[key]=nodesToUnit();
+  window.SLIME_PART_ASPECTS[key]=aspect;
+  out.value=nodesToUnit();
 }
-
 function renderPreview(){
-  const g = { ...base, bodyShape:'blob', eyes:'round', mouth:'smile', ears:'none', horn:'none', nose:'none', tail:'none', pattern:'none', cheeks:'none', element, ...PARTS[currentKey()].genome };
-  preview.innerHTML='';
-  renderPet(preview, g, stageSel.value, { element });
+  const g={ ...base, bodyShape:'blob', eyes:'round', mouth:'smile', ears:'none', horn:'none', nose:'none', tail:'none', pattern:'none', cheeks:'none', element, ...PARTS[partSel.value].genome };
+  preview.innerHTML=''; renderPet(preview, g, stageSel.value, { element });
 }
-
 function redraw(){
-  // apply current drawing as a live override (not persisted) so preview updates
-  apply(false);
-  // board: draw the path + points
-  const pathD = pathFrom(points, smooth);
-  let svg = '';
-  if (pathD) svg += `<path d="${pathD}" fill="#c9b6ff88" stroke="${'#8a63d6'}" stroke-width="2.5" stroke-linejoin="round"/>`;
-  points.forEach((p,idx)=>{ svg += `<circle cx="${p.x}" cy="${p.y}" r="6" fill="${idx===0?'#ff77b3':'#8a63d6'}" stroke="#fff" stroke-width="2" data-i="${idx}"/>`; });
-  board.innerHTML = svg;
+  applyLive();
+  let svg=`<path class="shape" d="${nodesToBoard()}"/>`;
+  if(showHandles){
+    nodes.forEach((nd,i)=>{
+      svg+=`<line class="hline" x1="${nd.a[0]}" y1="${nd.a[1]}" x2="${nd.in[0]}" y2="${nd.in[1]}"/>`;
+      svg+=`<line class="hline" x1="${nd.a[0]}" y1="${nd.a[1]}" x2="${nd.out[0]}" y2="${nd.out[1]}"/>`;
+      svg+=`<circle class="handle" cx="${nd.in[0]}" cy="${nd.in[1]}" r="4" data-i="${i}" data-t="in"/>`;
+      svg+=`<circle class="handle" cx="${nd.out[0]}" cy="${nd.out[1]}" r="4" data-i="${i}" data-t="out"/>`;
+    });
+  }
+  nodes.forEach((nd,i)=>{ svg+=`<circle class="anchor" cx="${nd.a[0]}" cy="${nd.a[1]}" r="6.5" data-i="${i}" data-t="a"/>`; });
+  board.innerHTML=svg;
   renderPreview();
-  out.value = unitPath(points, smooth);
 }
 
-// ---- board interaction ----
-function boardPt(ev){ const r=board.getBoundingClientRect(); return { x:(ev.clientX-r.left)*440/r.width, y:(ev.clientY-r.top)*440/r.height }; }
-board.addEventListener('pointerdown', (ev)=>{
-  const t = ev.target;
-  if (t.tagName === 'circle') { drag = +t.getAttribute('data-i'); board.setPointerCapture(ev.pointerId); return; }
-  points.push(boardPt(ev)); redraw();
+function boardPt(ev){ const r=board.getBoundingClientRect(); return [(ev.clientX-r.left)*440/r.width, (ev.clientY-r.top)*440/r.height]; }
+board.addEventListener('pointerdown',(ev)=>{
+  const t=ev.target;
+  if(t.tagName==='circle'){ drag={i:+t.getAttribute('data-i'), t:t.getAttribute('data-t')}; board.setPointerCapture(ev.pointerId); }
 });
-board.addEventListener('pointermove', (ev)=>{ if (drag<0) return; points[drag]=boardPt(ev); redraw(); });
-board.addEventListener('pointerup', ()=>{ drag=-1; });
+board.addEventListener('pointermove',(ev)=>{
+  if(!drag) return; const p=boardPt(ev); const nd=nodes[drag.i];
+  if(drag.t==='a'){ const dx=p[0]-nd.a[0], dy=p[1]-nd.a[1]; nd.a=[p[0],p[1]]; nd.in=[nd.in[0]+dx,nd.in[1]+dy]; nd.out=[nd.out[0]+dx,nd.out[1]+dy]; }
+  else { nd[drag.t]=[p[0],p[1]]; }
+  redraw();
+});
+board.addEventListener('pointerup',()=>{ drag=null; });
+board.addEventListener('dblclick',(ev)=>{
+  const t=ev.target;
+  if(t.tagName==='circle' && t.getAttribute('data-t')==='a'){
+    if(nodes.length>3){ nodes.splice(+t.getAttribute('data-i'),1); redraw(); }
+    return;
+  }
+  // add a node at the clicked position (between nearest two anchors)
+  const p=boardPt(ev); let best=0, bd=1e9;
+  for(let i=0;i<nodes.length;i++){ const j=(i+1)%nodes.length; const mx=(nodes[i].a[0]+nodes[j].a[0])/2, my=(nodes[i].a[1]+nodes[j].a[1])/2; const d=(mx-p[0])**2+(my-p[1])**2; if(d<bd){bd=d;best=i;} }
+  nodes.splice(best+1,0,{ a:[p[0],p[1]], in:[p[0]-14,p[1]], out:[p[0]+14,p[1]] });
+  redraw();
+});
 
-document.getElementById('curve').onclick = (e)=>{ smooth=!smooth; e.target.classList.toggle('on',smooth); e.target.textContent = smooth?'Curve morbide':'Linee dritte'; redraw(); };
-document.getElementById('undo').onclick = ()=>{ points.pop(); redraw(); };
-document.getElementById('clear').onclick = ()=>{ points=[]; redraw(); };
-document.getElementById('tmpl').onclick = ()=>{ points=[]; const cx=220,cy=220,r=140; for(let k=0;k<10;k++){ const a=-Math.PI/2 + k*2*Math.PI/10; points.push({x:cx+Math.cos(a)*r, y:cy+Math.sin(a)*r*1.05}); } redraw(); };
-document.getElementById('apply').onclick = ()=>{ apply(true); flash('salvato ✓'); };
-document.getElementById('reset').onclick = ()=>{
-  const key=currentKey();
-  delete window.SLIME_PART_OVERRIDES[key]; delete window.SLIME_PART_ASPECTS[key];
-  localStorage.setItem('slime_part_overrides', JSON.stringify(window.SLIME_PART_OVERRIDES));
-  localStorage.setItem('slime_part_aspects', JSON.stringify(window.SLIME_PART_ASPECTS));
-  points=[]; redraw(); flash('ripristinato');
-};
-document.getElementById('copy').onclick = async ()=>{ try{ await navigator.clipboard.writeText(out.value); flash('copiato ✓'); }catch(_){} };
-partSel.onchange = ()=>{ points=[]; redraw(); };
-stageSel.onchange = redraw;
+document.getElementById('handles').onclick=(e)=>{ showHandles=!showHandles; e.target.classList.toggle('on',showHandles); redraw(); };
+document.getElementById('reload').onclick=()=>{ const key=partSel.value; delete window.SLIME_PART_OVERRIDES[key]; delete window.SLIME_PART_ASPECTS[key]; loadPart(); flash('originale caricato'); };
+document.getElementById('apply').onclick=()=>{ applyLive(); localStorage.setItem('slime_part_overrides',JSON.stringify(window.SLIME_PART_OVERRIDES)); localStorage.setItem('slime_part_aspects',JSON.stringify(window.SLIME_PART_ASPECTS)); flash('salvato ✓'); };
+document.getElementById('reset').onclick=()=>{ const key=partSel.value; delete window.SLIME_PART_OVERRIDES[key]; delete window.SLIME_PART_ASPECTS[key]; localStorage.setItem('slime_part_overrides',JSON.stringify(window.SLIME_PART_OVERRIDES)); localStorage.setItem('slime_part_aspects',JSON.stringify(window.SLIME_PART_ASPECTS)); loadPart(); flash('modifica rimossa'); };
+document.getElementById('copy').onclick=async()=>{ try{ await navigator.clipboard.writeText(out.value); flash('copiato ✓'); }catch(_){} };
+partSel.onchange=loadPart;
+stageSel.onchange=renderPreview;
 function flash(t){ const c=document.getElementById('copied'); c.textContent=t; setTimeout(()=>c.textContent='',1600); }
 
-redraw();
+loadPart();
 </script>
 </body>
 </html>

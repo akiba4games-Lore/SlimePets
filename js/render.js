@@ -769,6 +769,25 @@ function renderAngel(g, stage, opts) {
   );
 }
 
+// v15.10: exposed so the part editor can LOAD the current built-in shapes and
+// edit them (rather than drawing from scratch).
+export const BUILTIN_PART_UNITS = {
+  fluffy: FLUFFY_UNIT,
+  spiky: SPIKY_UNIT,
+  devil: DEVIL_UNIT,
+  earOuter: EAR_OUTER,
+  fangMouth: FANG2_MOUTH,
+  openMouth: OPEN_MOUTH,
+};
+export const BUILTIN_PART_ASPECTS = {
+  fluffy: 1,
+  spiky: 1,
+  devil: DEVIL_ASPECT,
+  earOuter: EAR_ASPECT,
+  fangMouth: FANG2_ASPECT,
+  openMouth: OPEN_ASPECT,
+};
+
 // ---------------------------------------------------------------------------
 // Main entry point.
 // ---------------------------------------------------------------------------
