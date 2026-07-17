@@ -1281,8 +1281,12 @@ export function doTrain(name) {
   pet.care.hygiene = clamp(pet.care.hygiene - ex.hygiene - TRAIN_HYGIENE_HIT, 0, 100);
   // Working out burns a little weight (running burns the most).
   pet.weight = clamp(pet.weight - (name === 'Run' ? 2.5 : 1.5), 0, 100);
-  // v0.15: gain = base * affinity (no per-stat diminishing returns anymore).
-  const gain = ex.base * pet.genome.affinity[ex.stat];
+  // v0.15: gain = base * affinity * happiness-factor + random variance.
+  //  - happiness factor: 0.8 (sad) → 1.2 (max happy), linear over 0..100.
+  //  - variance: a flat random ±0.5. Floored at 0.1 so a session always helps.
+  const happyMult = 0.8 + (pet.care.happiness / 100) * 0.4;
+  const variance = Math.random() - 0.5; // -0.5 .. +0.5
+  const gain = Math.max(0.1, ex.base * pet.genome.affinity[ex.stat] * happyMult + variance);
   addTraining(pet, ex.stat, gain);
   const leveled = grantXp(pet, 6);
   pet.trainingsDone = (pet.trainingsDone || 0) + 1; // feeds 'trainings' unlocks
