@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SlimePets — Visual Gallery / Editor</title>
+<style>
+  :root {
+    --bg1: #ffe9f4; --bg2: #e7f0ff; --panel: #ffffff; --ink: #6b5570;
+    --ink-soft: #a68fb0; --pink-d: #ff77b3; --line: #efe3ef;
+    --shadow: 0 6px 18px rgba(160,120,170,.18);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Baloo 2","Quicksand","Segoe UI",system-ui,sans-serif;
+    color: var(--ink); background: linear-gradient(160deg,var(--bg1),var(--bg2));
+    padding: 0 0 60px;
+  }
+  header.top {
+    position: sticky; top: 0; z-index: 5;
+    background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line);
+    padding: 12px 18px; box-shadow: var(--shadow);
+  }
+  header.top h1 { margin: 0 0 8px; font-size: 20px; color: var(--pink-d); }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: center; }
+  .ctl { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+  .ctl select, .ctl button {
+    font-family: inherit; font-weight: 700; font-size: 13px; color: var(--ink);
+    border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer;
+  }
+  .ctl button.accent { background: var(--pink-d); color: #fff; border-color: var(--pink-d); }
+  .hint { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+  main { padding: 16px 18px; max-width: 1180px; margin: 0 auto; }
+  section.dim { margin: 0 0 26px; }
+  section.dim h2 {
+    font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 10px;
+  }
+  section.dim h2 .count { font-size: 12px; color: var(--ink-soft); font-weight: 700; }
+  section.dim h2 .note { font-size: 11px; color: var(--ink-soft); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 12px; }
+  .variant {
+    background: var(--panel); border-radius: 16px; box-shadow: var(--shadow);
+    padding: 8px; text-align: center; border: 2px solid transparent; transition: border-color .12s;
+  }
+  .variant.excluded { border-color: #ffb3c6; opacity: .5; filter: grayscale(.55); }
+  .variant .svgwrap {
+    background: radial-gradient(circle at 50% 40%, #fff 0%, #ffeaf5 70%, #ffd9ec 100%);
+    border-radius: 12px; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .variant svg { width: 100%; height: 100%; display: block; }
+  .variant .lab { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 6px; font-size: 12px; font-weight: 800; }
+  .variant .lab input { width: 15px; height: 15px; accent-color: var(--pink-d); }
+  .swatch { font-size: 10px; color: var(--ink-soft); font-weight: 700; }
+  #out {
+    width: 100%; min-height: 150px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; color: var(--ink); background: #fff;
+  }
+  .outbar { display: flex; gap: 10px; align-items: center; margin: 6px 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>🎨 SlimePets — Galleria variazioni visive</h1>
+  <div class="controls">
+    <span class="ctl">Stadio
+      <select id="stage">
+        <option value="baby">baby</option>
+        <option value="child">child</option>
+        <option value="teen">teen</option>
+        <option value="adult" selected>adult</option>
+      </select>
+    </span>
+    <span class="ctl">Elemento (colore)
+      <select id="element"></select>
+    </span>
+    <span class="ctl"><button id="reshuffle">🎲 Rimescola le altre parti</button></span>
+    <span class="ctl"><button id="all-on">Tutte ✓</button><button id="all-off">Tutte ✗</button></span>
+    <span class="hint">Spunta = tieni · togli la spunta = scarta. Alcune parti (naso/coda/pattern) compaiono solo da teen/adult.</span>
+  </div>
+</header>
+
+<main>
+  <div id="dims"></div>
+
+  <section class="dim">
+    <h2>🧬 Combinazioni casuali <span class="count">(esempi completi)</span> <button class="ctl" id="reroll-combos" style="margin-left:auto">🎲 Rigenera</button></h2>
+    <div class="grid" id="combos"></div>
+  </section>
+
+  <section class="dim">
+    <h2>📋 Liste da tenere <span class="note">(copiale e dimmi cosa togliere; io aggiorno pet.js)</span></h2>
+    <div class="outbar">
+      <button class="ctl accent" id="copy-keep">Copia liste "tieni"</button>
+      <span class="hint" id="copied"></span>
+    </div>
+    <textarea id="out" readonly></textarea>
+  </section>
+</main>
+
+<script type="module">
+import * as Pet from './js/pet.js';
+import { renderPet } from './js/render.js';
+
+const NS = 'http://www.w3.org/2000/svg';
+const STORE = 'slimepets_gallery_excluded_v1';
+
+// Visual dimensions to browse. `bool` renders true/false; others render each option.
+const DIMS = [
+  { key: 'bodyShape', label: 'Forma corpo', options: Pet.BODY_SHAPES, note: '' },
+  { key: 'eyes',      label: 'Occhi',       options: Pet.EYE_STYLES,  note: '' },
+  { key: 'mouth',     label: 'Bocca',       options: Pet.MOUTH_STYLES, note: '' },
+  { key: 'ears',      label: 'Orecchie',    options: Pet.EAR_STYLES,  note: 'da child' },
+  { key: 'horn',      label: 'Corna',       options: Pet.HORN_STYLES, note: 'da child' },
+  { key: 'nose',      label: 'Naso',        options: Pet.NOSE_STYLES, note: 'da teen' },
+  { key: 'tail',      label: 'Coda',        options: Pet.TAIL_STYLES, note: 'da teen' },
+  { key: 'pattern',   label: 'Pattern',     options: Pet.PATTERN_STYLES, note: 'da adult' },
+  { key: 'cheeks',    label: 'Guance',      options: [true, false], bool: true, note: '' },
+];
+
+// Persisted exclusions: { dimKey: Set(optionString) }
+const excluded = loadExcluded();
+function loadExcluded() {
+  const out = {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE) || '{}');
+    for (const k of Object.keys(raw)) out[k] = new Set(raw[k]);
+  } catch (_) {}
+  return out;
+}
+function saveExcluded() {
+  const plain = {};
+  for (const k of Object.keys(excluded)) plain[k] = [...excluded[k]];
+  localStorage.setItem(STORE, JSON.stringify(plain));
+}
+function isExcluded(dimKey, opt) { return excluded[dimKey] && excluded[dimKey].has(String(opt)); }
+function setExcluded(dimKey, opt, off) {
+  excluded[dimKey] = excluded[dimKey] || new Set();
+  if (off) excluded[dimKey].add(String(opt)); else excluded[dimKey].delete(String(opt));
+  saveExcluded();
+}
+
+// Base seed for the "held constant" parts while varying one dimension.
+let baseSeed = 0x5eed1234;
+
+function stageVal() { return document.getElementById('stage').value; }
+function elementVal() { return document.getElementById('element').value; }
+
+function newSvg() {
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('viewBox', '0 0 200 200');
+  return s;
+}
+
+// Render a slime with the base genome plus overrides, into a fresh SVG element.
+function slimeSvg(overrides) {
+  const g = { ...Pet.generateGenome(baseSeed), ...overrides };
+  const stage = stageVal();
+  const svg = newSvg();
+  renderPet(svg, g, stage, { element: g.element });
+  return svg;
+}
+
+function variantCard(dimKey, opt, labelText, overrides) {
+  const card = document.createElement('div');
+  card.className = 'variant' + (isExcluded(dimKey, opt) ? ' excluded' : '');
+  const wrap = document.createElement('div');
+  wrap.className = 'svgwrap';
+  wrap.appendChild(slimeSvg(overrides));
+  card.appendChild(wrap);
+  const lab = document.createElement('label');
+  lab.className = 'lab';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !isExcluded(dimKey, opt);
+  cb.addEventListener('change', () => {
+    setExcluded(dimKey, opt, !cb.checked);
+    card.classList.toggle('excluded', !cb.checked);
+    renderOut();
+  });
+  lab.appendChild(cb);
+  lab.appendChild(document.createTextNode(labelText));
+  card.appendChild(lab);
+  return card;
+}
+
+function renderDims() {
+  const host = document.getElementById('dims');
+  host.innerHTML = '';
+  const el = elementVal();
+  for (const dim of DIMS) {
+    const sec = document.createElement('section');
+    sec.className = 'dim';
+    const h2 = document.createElement('h2');
+    h2.innerHTML = `${dim.label} <span class="count">(${dim.options.length})</span>` +
+      (dim.note ? ` <span class="note">${dim.note}</span>` : '');
+    sec.appendChild(h2);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    for (const opt of dim.options) {
+      const overrides = { [dim.key]: opt, element: el };
+      const labelText = dim.bool ? (opt ? 'sì' : 'no') : String(opt);
+      grid.appendChild(variantCard(dim.key, opt, labelText, overrides));
+    }
+    sec.appendChild(grid);
+    host.appendChild(sec);
+  }
+
+  // Elements row (color) — same base pet in each element's palette.
+  const sec = document.createElement('section');
+  sec.className = 'dim';
+  const h2 = document.createElement('h2');
+  h2.innerHTML = `Elementi (colore) <span class="count">(${Pet.ELEMENTS.length})</span>`;
+  sec.appendChild(h2);
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  for (const elm of Pet.ELEMENTS) {
+    const card = document.createElement('div');
+    card.className = 'variant';
+    const wrap = document.createElement('div');
+    wrap.className = 'svgwrap';
+    wrap.appendChild(slimeSvg({ element: elm }));
+    card.appendChild(wrap);
+    const lab = document.createElement('div');
+    lab.className = 'lab';
+    lab.textContent = elm;
+    card.appendChild(lab);
+    grid.appendChild(card);
+  }
+  sec.appendChild(grid);
+  host.appendChild(sec);
+}
+
+function renderCombos() {
+  const grid = document.getElementById('combos');
+  grid.innerHTML = '';
+  const stage = stageVal();
+  for (let i = 0; i < 24; i++) {
+    const seed = (Math.random() * 0xffffffff) >>> 0;
+    const g = Pet.generateGenome(seed);
+    const card = document.createElement('div');
+    card.className = 'variant';
+    const wrap = document.createElement('div');
+    wrap.className = 'svgwrap';
+    const svg = newSvg();
+    renderPet(svg, g, stage, { element: g.element });
+    wrap.appendChild(svg);
+    card.appendChild(wrap);
+    const lab = document.createElement('div');
+    lab.className = 'swatch';
+    lab.textContent = `${g.element} · ${g.bodyShape}`;
+    card.appendChild(lab);
+    grid.appendChild(card);
+  }
+}
+
+function renderOut() {
+  const lines = [];
+  for (const dim of DIMS) {
+    const kept = dim.options.filter((o) => !isExcluded(dim.key, o));
+    const fmt = dim.bool
+      ? kept.map(String).join(', ')
+      : kept.map((o) => `'${o}'`).join(', ');
+    lines.push(`${dim.key}: [${fmt}]`);
+  }
+  document.getElementById('out').value = lines.join('\n');
+}
+
+function renderAll() { renderDims(); renderCombos(); renderOut(); }
+
+// --- element selector population ---
+const elSel = document.getElementById('element');
+for (const e of Pet.ELEMENTS) {
+  const o = document.createElement('option');
+  o.value = e; o.textContent = e;
+  elSel.appendChild(o);
+}
+elSel.value = 'none';
+
+// --- events ---
+document.getElementById('stage').addEventListener('change', renderAll);
+elSel.addEventListener('change', () => { renderDims(); });
+document.getElementById('reshuffle').addEventListener('click', () => {
+  baseSeed = (Math.random() * 0xffffffff) >>> 0;
+  renderDims();
+});
+document.getElementById('reroll-combos').addEventListener('click', renderCombos);
+document.getElementById('all-on').addEventListener('click', () => {
+  for (const dim of DIMS) excluded[dim.key] = new Set();
+  saveExcluded(); renderDims(); renderOut();
+});
+document.getElementById('all-off').addEventListener('click', () => {
+  for (const dim of DIMS) excluded[dim.key] = new Set(dim.options.map(String));
+  saveExcluded(); renderDims(); renderOut();
+});
+document.getElementById('copy-keep').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(document.getElementById('out').value);
+    const c = document.getElementById('copied'); c.textContent = 'copiato ✓';
+    setTimeout(() => (c.textContent = ''), 1600);
+  } catch (_) {}
+});
+
+renderAll();
+</script>
+</body>
+</html>
