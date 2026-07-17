@@ -219,18 +219,15 @@ function eye(style, x, y, r, pal, mood) {
       // v15: minimal dot eye — a small filled circle (~38% of normal radius).
       return `<circle cx="${x}" cy="${y}" r="${r * 0.38}" fill="${pal.eye}"/>`;
     case 'blank':
-      // v15.2: like manga but ALL WHITE with a black outline (two concentric
-      // black-ringed white circles) — a bright anime eye.
-      return (
-        `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.26}"/>` +
-        `<circle cx="${x}" cy="${y}" r="${r * 0.4}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.16}"/>`
-      );
+      // v15.2: like manga but ALL WHITE with a black outline (single circle).
+      return `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.26}"/>`;
     case 'cat':
-      // v15.2: yellow cat eye with a vertical slit pupil + a small highlight.
+      // v15.3: white BASE + yellow iris (SHORTER in height) + slit pupil + highlight.
       return (
-        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.82}" ry="${r * 1.14}" fill="#ffd24a" stroke="#1c1026" stroke-width="${r * 0.16}"/>` +
-        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.2}" ry="${r * 0.94}" fill="#1c1026"/>` +
-        `<circle cx="${x - r * 0.34}" cy="${y - r * 0.5}" r="${r * 0.18}" fill="#ffffff"/>`
+        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.9}" ry="${r * 0.92}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.16}"/>` +
+        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.62}" ry="${r * 0.82}" fill="#ffd24a"/>` +
+        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.16}" ry="${r * 0.72}" fill="#1c1026"/>` +
+        `<circle cx="${x - r * 0.3}" cy="${y - r * 0.4}" r="${r * 0.16}" fill="#ffffff"/>`
       );
     case 'star': // v15: legacy (no longer generated) — kept so old saves still draw.
       return starPath(x, y, r * 1.05, pal.eye) + `<circle cx="${x - r * 0.28}" cy="${y - r * 0.3}" r="${r * 0.26}" fill="#ffffff"/>`;
@@ -628,7 +625,7 @@ function renderAngel(g, stage, opts) {
 
   const eyeR = L.w * 0.19 * L.eyeScale;
   const eyeY = L.cy + L.h * 0.02;
-  const eyeDX = L.w * 0.4;
+  const eyeDX = L.w * 0.4 + 5; // v15.3: eyes 10px farther apart (5 per side)
   const mouthY = eyeY + eyeR + L.h * 0.14;
 
   // ✕ (closed/gone) eyes.
@@ -710,7 +707,7 @@ export function renderPet(svgEl, genome, stage, opts) {
   // Face geometry.
   const eyeR = L.w * 0.19 * L.eyeScale;
   const eyeY = L.cy + L.h * 0.02;
-  const eyeDX = L.w * 0.4;
+  const eyeDX = L.w * 0.4 + 5; // v15.3: eyes 10px farther apart (5 per side)
   const mouthY = eyeY + eyeR + L.h * 0.14;
   const mouthW = L.w * 0.5;
 
