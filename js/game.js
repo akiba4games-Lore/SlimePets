@@ -206,21 +206,22 @@ const BATTLE_MAX_CHARGES = 3;
 // that exercise for TRAIN_BLOCK_MS (scolding does NOT clear it).
 const STRIKE_PROBS = [0.10, 0.20, 0.50, 0.70, 0.90];
 const LAZY_STRIKE_BONUS = 0.10;
-const LAZY_REFUSE_BONUS = 0.15;          // (legacy) Pigro flat refusal — unused since v0.15
-const LAZY_STAMINA_MULT = 0.75;          // Pigro: slower stamina regen (0.75×)
-const SLEEPY_STAMINA_MULT = 1.15;        // Dormiglione: small awake stamina-regen bonus
-const SLEEPY_SLEEP_HEAL_MULT = 1.4;      // Dormiglione: sleep restores more HP (1.4×)
-const GLUTTON_HUNGER_MULT = 1.3;         // Goloso: hunger decays faster (1.3×)
-const GLUTTON_FOOD_HAPPY = 3;            // Goloso: extra happiness per feed
-const GLUTTON_WEIGHT_MULT = 1.3;         // Goloso: weight GAIN from food ×1.3
-const CUDDLY_CUDDLE_HAPPY = 4;           // Coccolone: extra happiness per cuddle
-const CUDDLY_IGNORE_MS = 30 * 60 * 1000; // Coccolone: "recently cuddled" window (30 min)
-const CUDDLY_IGNORE_MULT = 1.25;         // Coccolone: happiness decays 1.25× faster when ignored
-const PLAYFUL_PLAY_HAPPY = 3;            // Giocoso: extra happiness on an RPS win
-const PLAYFUL_HAPPY_MULT = 1.1;          // Giocoso: mild happiness decay (wants to play)
-const PLAYFUL_REFILL_MS = 3.5 * 60 * 1000; // Giocoso: play charges refill in 3.5 min (vs 5)
-const MESSY_HYGIENE_MULT = 1.4;          // Disordinato: hygiene decays faster (1.4×)
-const MESSY_POOP_MULT = 0.7;             // Disordinato: shorter poop interval (poops more often)
+// v0.15 personality rebalance — each persona has one clear bonus + one malus.
+const LAZY_SLEEP_HAPPY_MULT = 1.5;       // Pigro (BONUS): sleeping restores +50% happiness
+const SLEEPY_SLEEP_HEAL_MULT = 1.4;      // Dormiglione (BONUS): sleep restores more HP (1.4×)
+const SLEEPY_SLEEP_STAMINA_MULT = 1.4;   // Dormiglione (BONUS): sleep restores more stamina (1.4×)
+const SLEEPY_TRAIN_COST_MULT = 1.1;      // Dormiglione (MALUS): training costs +10% stamina
+const GLUTTON_HUNGER_MULT = 1.2;         // Goloso (MALUS): hunger decays faster (1.2×)
+const GLUTTON_FOOD_HUNGER_MULT = 1.3;    // Goloso (BONUS): +30% hunger restored from food
+const GLUTTON_WEIGHT_MULT = 1.5;         // Goloso (MALUS): weight GAIN from food ×1.5
+const CUDDLY_CUDDLE_HAPPY = 4;           // Coccolone (BONUS): extra happiness per cuddle
+const CUDDLY_OTHER_HAPPY_MULT = 0.8;     // Coccolone (MALUS): food/play give −20% happiness
+const PLAYFUL_PLAY_HAPPY = 3;            // Giocoso (BONUS): extra happiness on an RPS win
+const PLAYFUL_HUNGER_MULT = 1.2;         // Giocoso (MALUS): hunger decays faster (1.2×)
+const PLAYFUL_REFILL_MS = 3.5 * 60 * 1000; // Giocoso (BONUS): play charges refill in 3.5 min (vs 5)
+const MESSY_HYGIENE_MULT = 1.25;         // Disordinato (MALUS): hygiene decays faster (1.25×)
+const MESSY_POOP_MULT = 0.7;             // Disordinato (MALUS): shorter poop interval (poops more)
+// Disordinato (BONUS): immune to the "dirty" happiness penalty (handled in applyDecay).
 
 // Personality display emoji (info panel + idle animations).
 const PERSONALITY_EMOJI = {
@@ -240,16 +241,9 @@ function playRefillMs(pet) {
   return isPersona(pet, 'playful') ? PLAYFUL_REFILL_MS : PLAY_REFILL_MS;
 }
 
-// Multiplier on AWAKE happiness decay from personality (idle craving). Coccolone
-// decays faster once it hasn't been cuddled for a while; Giocoso always drifts a
-// little faster (it wants to play).
-function personalityHappyDecayMult(pet) {
-  if (isPersona(pet, 'cuddly')) {
-    return (Date.now() - (pet.lastCuddleAt || 0)) > CUDDLY_IGNORE_MS ? CUDDLY_IGNORE_MULT : 1;
-  }
-  if (isPersona(pet, 'playful')) return PLAYFUL_HAPPY_MULT;
-  return 1;
-}
+// v0.15: no personality now speeds up idle happiness decay (Coccolone/Giocoso
+// maluses moved to food/play happiness & hunger). Kept as a no-op hook.
+function personalityHappyDecayMult() { return 1; }
 
 // v0.15 — a pet won't train or battle while sick or too unhappy (below this
 // happiness). Tunable.
@@ -622,19 +616,23 @@ function applyDecay(pet, dtSec) {
   if (pet.sleeping && pet.lastFedAt) pet.lastFedAt += dtSec * 1000;
   // Starvation (§6): only after the egg has hatched, awake, and 2h since last feed.
   const starving = pet.stage !== 'egg' && !pet.sleeping && Date.now() - (pet.lastFedAt || 0) > STARVE_GRACE_MS;
-  // A poop on the floor makes hygiene decay 3× faster; v14B: Disordinato adds 1.4×.
+  // A poop on the floor makes hygiene decay 3× faster; v14B: Disordinato adds 1.25×.
   const hygMult = (pet.poopInRoom ? 3 : 1) * (isPersona(pet, 'messy') ? MESSY_HYGIENE_MULT : 1);
   // v5 (§4): a dirty pet (hygiene < 35) loses happiness ~1.6× faster.
-  const dirtyMult = c.hygiene < DIRTY_THRESHOLD ? DIRTY_DECAY_MULT : 1;
+  // v0.15: Disordinato is immune — being dirty doesn't bother it.
+  const dirtyMult = (c.hygiene < DIRTY_THRESHOLD && !isPersona(pet, 'messy')) ? DIRTY_DECAY_MULT : 1;
   // v7: a sick pet loses happiness ~2× faster (applied to awake decay only).
   const sickMult = pet.sick ? SICK_HAPPY_MULT : 1;
-  // v14B: Goloso gets hungry ~1.3× faster; Coccolone/Giocoso lose happiness a bit faster.
-  const hungerMult = isPersona(pet, 'glutton') ? GLUTTON_HUNGER_MULT : 1;
+  // v0.15: Goloso & Giocoso get hungry ~1.2× faster.
+  const hungerMult = isPersona(pet, 'glutton') ? GLUTTON_HUNGER_MULT
+    : isPersona(pet, 'playful') ? PLAYFUL_HUNGER_MULT : 1;
   const personaHappyMult = personalityHappyDecayMult(pet);
+  // v0.15: Pigro restores +50% happiness while sleeping.
+  const sleepHappyMult = isPersona(pet, 'lazy') ? LAZY_SLEEP_HAPPY_MULT : 1;
   if (pet.sleeping) {
     c.hunger -= DECAY_SLEEP.hunger * dtH * hungerMult;
     c.hygiene -= DECAY_SLEEP.hygiene * dtH * hygMult;
-    c.happiness += DECAY_SLEEP.happiness * dtH;
+    c.happiness += DECAY_SLEEP.happiness * dtH * sleepHappyMult;
   } else {
     c.hunger -= DECAY_AWAKE.hunger * dtH * hungerMult;
     c.happiness -= DECAY_AWAKE.happiness * dtH * (wounded ? 3 : 1) * dirtyMult * sickMult * personaHappyMult;
@@ -701,11 +699,10 @@ function applyDecay(pet, dtSec) {
     let guard = 0;
     while (toApply > 0 && guard < 240) { applySickStatPenalty(pet); toApply -= 1; guard += 1; }
   }
-  // stamina regen: ~1 per 30s (2x sleeping). v14B: Pigro regens slower (0.75×);
-  // Dormiglione gets a small awake regen bonus (1.15×).
+  // stamina regen: ~1 per 30s (2× sleeping). v0.15: Dormiglione recovers even
+  // more stamina while SLEEPING (×1.4).
   let rate = pet.sleeping ? 2 : 1;
-  if (isPersona(pet, 'lazy')) rate *= LAZY_STAMINA_MULT;
-  else if (isPersona(pet, 'sleepyhead') && !pet.sleeping) rate *= SLEEPY_STAMINA_MULT;
+  if (pet.sleeping && isPersona(pet, 'sleepyhead')) rate *= SLEEPY_SLEEP_STAMINA_MULT;
   pet.stamina = clamp(pet.stamina + (dtSec / 30) * rate, 0, pet.genome.maxStamina);
 }
 
@@ -916,10 +913,12 @@ export function doFeedFood(key) {
   pet.coins = Math.max(0, (pet.coins || 0) - fd.cost);
   // Reduced hunger restore + a little HP and stamina back (clamped to max).
   const maxHp = computeStats(pet).hp;
-  c.hunger = clamp(c.hunger + fd.hunger, 0, 100);
-  // v14B: Goloso gets a little extra happiness from food and puts on weight faster.
   const glutton = isPersona(pet, 'glutton');
-  c.happiness = clamp(c.happiness + fd.happy + (glutton ? GLUTTON_FOOD_HAPPY : 0), 0, 100);
+  // v0.15: Goloso draws MORE nutrition from food (+30% hunger), but fattens
+  // faster (weight ×1.5). Coccolone cheers up less from food (−20% happiness).
+  c.hunger = clamp(c.hunger + fd.hunger * (glutton ? GLUTTON_FOOD_HUNGER_MULT : 1), 0, 100);
+  const foodHappy = fd.happy * (isPersona(pet, 'cuddly') ? CUDDLY_OTHER_HAPPY_MULT : 1);
+  c.happiness = clamp(c.happiness + foodHappy, 0, 100);
   const wGain = fd.weight > 0 && glutton ? fd.weight * GLUTTON_WEIGHT_MULT : fd.weight;
   pet.weight = clamp(pet.weight + wGain, 0, 100);
   pet.hpCurrent = clamp((pet.hpCurrent || 0) + fd.hp, 1, maxHp);
@@ -1208,12 +1207,14 @@ export function doTrain(name) {
   }
   // Basics cost a flat 20 stamina up front. Special REQUIRES a full bar (it then
   // drains all of it) and is also limited to once per day (checked above).
+  // v0.15: Dormiglione tires ~10% more from training (higher basic cost).
+  const trainCost = TRAIN_STAMINA_COST * (isPersona(pet, 'sleepyhead') ? SLEEPY_TRAIN_COST_MULT : 1);
   if (isSpecial) {
     if (pet.stamina < pet.genome.maxStamina - 0.01) {
       toast(t('toast.specialNeedFull', { name: pet.name }));
       return;
     }
-  } else if (pet.stamina < TRAIN_STAMINA_COST) {
+  } else if (pet.stamina < trainCost) {
     toast(t('toast.tooTired', { name: pet.name }));
     return;
   }
@@ -1275,7 +1276,7 @@ export function doTrain(name) {
   pet.lastExercise = name;
   pet.sameExCount = consec;
   // pay costs (v6.1: flat 20 stamina + hunger/hygiene/weight)
-  pet.stamina = clamp(pet.stamina - TRAIN_STAMINA_COST, 0, pet.genome.maxStamina);
+  pet.stamina = clamp(pet.stamina - trainCost, 0, pet.genome.maxStamina);
   pet.care.hunger = clamp(pet.care.hunger - ex.hunger, 0, 100);
   pet.care.hygiene = clamp(pet.care.hygiene - ex.hygiene - TRAIN_HYGIENE_HIT, 0, 100);
   // Working out burns a little weight (running burns the most).
@@ -1465,11 +1466,13 @@ function revealRps(choice, petChoice) {
   const c = pet.care;
   let msg;
   if (choice === petChoice) {
-    c.happiness = clamp(c.happiness + 6, 0, 100);
+    c.happiness = clamp(c.happiness + 6 * (isPersona(pet, 'cuddly') ? CUDDLY_OTHER_HAPPY_MULT : 1), 0, 100);
     msg = t('rps.tie');
   } else if (RPS_BEATS[choice] === petChoice) {
     // v14B: Giocoso gets extra happiness from a play (RPS) win.
-    c.happiness = clamp(c.happiness + 12 + (isPersona(pet, 'playful') ? PLAYFUL_PLAY_HAPPY : 0), 0, 100);
+    // v0.15: Coccolone cheers up less from play (−20%).
+    const playHappy = (12 + (isPersona(pet, 'playful') ? PLAYFUL_PLAY_HAPPY : 0)) * (isPersona(pet, 'cuddly') ? CUDDLY_OTHER_HAPPY_MULT : 1);
+    c.happiness = clamp(c.happiness + playHappy, 0, 100);
     pet.rpsWins = (pet.rpsWins || 0) + 1; // feeds 'game' unlocks
     markAchievement();
     checkLearning(); // an RPS win may cross a 'game' unlock milestone
