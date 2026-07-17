@@ -402,6 +402,12 @@ const ROUND_OUTER = 'M -0.4259 -0.9889 C -0.0575 -1 -0.0575 -1 0.0764 -0.8854 C 
 const ROUND_INNER = 'M -0.051 -0.5483 C 0.0493 -0.4847 0.1296 -0.3646 0.1605 -0.2514 C 0.1694 -0.2028 0.1695 -0.1536 0.17 -0.1044 C 0.1701 -0.0952 0.1702 -0.086 0.1703 -0.0766 C 0.1694 -0.0055 0.1604 0.0613 0.1197 0.1214 C 0.092 0.1123 0.092 0.1123 0.0791 0.0888 C 0.0747 0.0791 0.0704 0.0694 0.066 0.0594 C 0.0436 0.013 0.0281 -0.0113 -0.019 -0.0333 C -0.02 -0.0132 -0.02 -0.0132 -0.0098 0.0122 C -0.0057 0.0612 -0.0091 0.1027 -0.0283 0.1487 C -0.061 0.1333 -0.09 0.1145 -0.1198 0.0943 C -0.1431 0.0831 -0.1599 0.0833 -0.1855 0.085 C -0.1817 0.0897 -0.1779 0.0945 -0.174 0.0994 C -0.1336 0.1536 -0.1188 0.2005 -0.1115 0.267 C -0.1435 0.276 -0.1435 0.276 -0.1762 0.2852 C -0.1692 0.2892 -0.1621 0.2931 -0.1548 0.2972 C -0.1158 0.3213 -0.1158 0.3213 -0.1022 0.3398 C -0.1062 0.3589 -0.1062 0.3589 -0.1115 0.3762 C -0.2475 0.3859 -0.3564 0.3397 -0.4604 0.2557 C -0.5665 0.164 -0.6488 0.0454 -0.6584 -0.0981 C -0.6593 -0.1213 -0.6597 -0.1444 -0.66 -0.1676 C -0.6604 -0.1792 -0.6604 -0.1792 -0.6608 -0.1912 C -0.6618 -0.2947 -0.6059 -0.3823 -0.5363 -0.4571 C -0.4088 -0.5769 -0.2146 -0.6298 -0.051 -0.5483 Z';
 const ROUND_ASPECT = 0.9842;
 
+// v16.2: player-drawn BUNNY ear (traced from a Potrace SVG, normalized). Outer
+// silhouette + inner ear, drawn once per side (mirrored).
+const BUNNY_OUTER = 'M -0.4553 -0.9908 C -0.5878 -0.9746 -0.7853 -0.896 -0.8489 -0.8336 C -0.9443 -0.7388 -1 -0.5378 -0.9735 -0.3844 C -0.9483 -0.2419 -0.8105 0.0247 -0.6713 0.1965 C -0.6117 0.2704 -0.4751 0.3975 -0.3559 0.4877 L -0.3121 0.5216 L -0.3519 0.5354 C -0.3731 0.5431 -0.3943 0.5578 -0.3996 0.5686 C -0.4089 0.5924 -0.3757 0.631 -0.328 0.6479 C -0.3082 0.6549 -0.2896 0.6618 -0.2869 0.6633 C -0.283 0.6649 -0.2936 0.6718 -0.3108 0.678 C -0.3267 0.6849 -0.3453 0.6988 -0.3519 0.7088 C -0.3863 0.7596 -0.2949 0.7904 -0.108 0.792 L 0.0086 0.7928 L 0.0351 0.8228 C 0.0696 0.8613 0.169 0.9191 0.2459 0.9453 C 0.3347 0.9753 0.5096 1 0.6037 0.9946 C 0.6965 0.99 0.8012 0.9584 0.8555 0.9199 C 1 0.8182 0.9708 0.6102 0.7932 0.4831 C 0.7535 0.4553 0.7495 0.4484 0.7614 0.4307 C 0.7906 0.386 0.7681 0.3035 0.719 0.2727 C 0.6832 0.2504 0.6183 0.2527 0.5732 0.2781 L 0.5361 0.2989 L 0.5361 0.2065 C 0.5348 -0.0809 0.4566 -0.3883 0.3426 -0.5485 C 0.1836 -0.772 0.0126 -0.9045 -0.1928 -0.9622 C -0.3028 -0.9931 -0.3704 -1 -0.4553 -0.9908 Z';
+const BUNNY_INNER = 'M -0.5215 -0.8213 C -0.6024 -0.8105 -0.5812 -0.8066 -0.4672 -0.8112 C -0.3678 -0.8151 -0.3479 -0.8136 -0.2936 -0.7989 C -0.2604 -0.7889 -0.2008 -0.7612 -0.1624 -0.7357 C -0.0577 -0.6687 0.1491 -0.4507 0.1716 -0.3821 L 0.1809 -0.3552 L 0.1504 -0.3721 C 0.0802 -0.4091 0.0033 -0.4145 -0.0749 -0.386 C -0.1345 -0.3636 -0.173 -0.3313 -0.1942 -0.2858 C -0.2021 -0.2689 -0.2114 -0.2512 -0.2127 -0.2458 C -0.2154 -0.2411 -0.2432 -0.2504 -0.2737 -0.2673 C -0.3426 -0.3043 -0.4009 -0.312 -0.4712 -0.2935 C -0.5891 -0.2627 -0.6262 -0.2126 -0.6024 -0.1156 C -0.5706 0.0177 -0.4288 0.1757 -0.1968 0.3359 C -0.1173 0.3906 -0.1001 0.4068 -0.1001 0.4291 C -0.1001 0.4638 -0.0497 0.4992 0.0139 0.5116 C 0.0391 0.5169 0.0643 0.5193 0.0669 0.5169 C 0.0709 0.5146 0.0537 0.5092 0.0285 0.5046 C -0.0311 0.4931 -0.0722 0.4661 -0.0828 0.4322 C -0.0921 0.3945 -0.059 0.3837 0.0192 0.3998 C 0.0709 0.4106 0.0749 0.4106 0.0656 0.3975 C 0.0616 0.3906 0.0537 0.3683 0.0497 0.3482 C 0.0364 0.2851 0.1093 0.2481 0.1597 0.292 C 0.1716 0.3028 0.1783 0.3166 0.173 0.3228 C 0.1637 0.3374 0.1836 0.3374 0.2048 0.3228 C 0.214 0.3166 0.2353 0.3112 0.2525 0.3112 C 0.2883 0.3112 0.2989 0.3259 0.3108 0.396 L 0.3201 0.4461 L 0.3227 0.3983 C 0.3241 0.349 0.3082 0.3128 0.279 0.2997 C 0.2657 0.2935 0.2644 0.2727 0.2724 0.2072 C 0.3095 -0.0971 0.2525 -0.3413 0.1067 -0.5077 C -0.0152 -0.6471 -0.0881 -0.7126 -0.1822 -0.7643 C -0.2962 -0.8259 -0.381 -0.8405 -0.5215 -0.8213 Z';
+const BUNNY_ASPECT = 0.5813;
+
 // ---------------------------------------------------------------------------
 // Ears (behind/atop the body).
 // ---------------------------------------------------------------------------
@@ -440,10 +446,28 @@ function ears(style, L, pal) {
           `<path d="${mapEar(EAR_INNER)}" fill="${eInner}"/></g>`;
       }
       case 'bunny': {
-        // v15: 20% bigger and lowered a touch (center was topY-22).
-        const by = topY - 16;
-        return `<ellipse cx="${mx + flip * 6}" cy="${by}" rx="10.8" ry="31" fill="${fill}" stroke="${st}" stroke-width="2" transform="rotate(${flip * 10} ${mx + flip * 6} ${by})"/>` +
-          `<ellipse cx="${mx + flip * 6}" cy="${by - 2}" rx="5.4" ry="22" fill="${inner}" transform="rotate(${flip * 10} ${mx + flip * 6} ${by})"/>`;
+        // v16.2: player-drawn bunny ear (traced). Outer -> pet body+outline,
+        // inner -> blush. Tall ear, drawn once per side (mirrored), tilted out.
+        const ay = topY + 8;
+        const mxc = mx + flip * 2;
+        const Hr = w * 1.35;
+        const SY = Hr / 2;
+        const SX = SY * partAspect('bunnyOuter', BUNNY_ASPECT);
+        const mapEar = (unit) => {
+          let i = 0;
+          return unit.replace(/-?\d*\.?\d+/g, (n) => {
+            const v = parseFloat(n);
+            const out = (i++ % 2 === 0) ? (mxc + v * SX * flip) : (ay + (v - 1) * SY);
+            return out.toFixed(2);
+          });
+        };
+        const eFill = partColor('bunnyOuter', 'fill', pal, 'body');
+        const eStroke = partColor('bunnyOuter', 'stroke', pal, 'outline');
+        const eInner = partColor('bunnyOuter', 'inner', pal, 'blush');
+        const rot = flip * 12;
+        return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
+          `<path d="${mapEar(partUnit('bunnyOuter', BUNNY_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="${mapEar(BUNNY_INNER)}" fill="${eInner}"/></g>`;
       }
       case 'floppy':
         return `<path d="M ${mx} ${topY + 8} q ${flip * 26} ${-4} ${flip * 30} ${28} q ${flip * -14} ${8} ${flip * -26} ${-6} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
@@ -466,8 +490,8 @@ function ears(style, L, pal) {
         const eFill = partColor('roundOuter', 'fill', pal, 'body');
         const eStroke = partColor('roundOuter', 'stroke', pal, 'outline');
         const eInner = partColor('roundOuter', 'inner', pal, 'blush');
-        // v16.1: rotate the tip 45° OUTWARD around the ear's base.
-        const rot = flip * 45;
+        // v16.2: rotate the tip 90° OUTWARD around the ear's base.
+        const rot = flip * 90;
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
           `<path d="${mapEar(partUnit('roundOuter', ROUND_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
           `<path d="${mapEar(ROUND_INNER)}" fill="${eInner}"/></g>`;
@@ -834,6 +858,7 @@ export const BUILTIN_PART_UNITS = {
   devil: DEVIL_UNIT,
   earOuter: EAR_OUTER,
   roundOuter: ROUND_OUTER,
+  bunnyOuter: BUNNY_OUTER,
   fangMouth: FANG2_MOUTH,
   openMouth: OPEN_MOUTH,
 };
@@ -843,6 +868,7 @@ export const BUILTIN_PART_ASPECTS = {
   devil: DEVIL_ASPECT,
   earOuter: EAR_ASPECT,
   roundOuter: ROUND_ASPECT,
+  bunnyOuter: BUNNY_ASPECT,
   fangMouth: FANG2_ASPECT,
   openMouth: OPEN_ASPECT,
 };
