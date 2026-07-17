@@ -538,7 +538,7 @@ const DEVIL_UNIT = 'M 0.5452 -1.0182 C 0.3312 -0.9309 0.2926 -0.8527 0.27 -0.833
 const DEVIL_ASPECT = 0.4758;
 
 // v16.12: single/double horns as editable unit triangles (were inline paths).
-const HORN1_UNIT = 'M 0 -1 C 0 -1 1 1 1 1 C 1 1 -1 1 -1 1 Z';
+const HORN1_UNIT = 'M 0 -1 C 0 -1 1.4287 0.8679 1.4804 0.9358 C 1.196 0.9406 -1.4287 0.9358 -1.4287 0.9358 C -1.4287 0.9358 -0.0453 -0.9891 0 -1 Z';
 const HORN1_ASPECT = 0.375;
 const HORN2_UNIT = 'M 0 -1 C 0 -1 1 1 1 1 C 1 1 -1 1 -1 1 Z';
 const HORN2_ASPECT = 0.3134;
@@ -565,19 +565,19 @@ function horns(style, L, pal) {
       return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/>`;
     }
     case 'double': {
-      // v16.12: editable unit triangle, rendered twice. Half (10.5, 33.5).
+      // v16.13: editable unit triangle, rendered twice MIRRORED. Half (10.5, 33.5).
       const SX = 10.5, SY = 33.5, ayc = topY + 10.5;
       const fill = partColor('hornDouble', 'fill', pal, 'horn');
       const stroke = partColor('hornDouble', 'stroke', pal, 'accentDark');
-      const one = (ax) => {
+      const one = (ax, flip) => {
         let i = 0;
         const d = partUnit('hornDouble', HORN2_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
           const v = parseFloat(n);
-          return ((i++ % 2 === 0) ? (ax + v * SX) : (ayc + v * SY)).toFixed(2);
+          return ((i++ % 2 === 0) ? (ax + v * SX * flip) : (ayc + v * SY)).toFixed(2);
         });
         return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/>`;
       };
-      return one(cx - 16) + one(cx + 16);
+      return one(cx - 16, -1) + one(cx + 16, 1);
     }
     case 'devil': {
       // v15.9: player-drawn SINGLE devil horn (traced), rendered twice (mirror)
@@ -611,9 +611,9 @@ function horns(style, L, pal) {
 }
 
 // v16.12: nub (unit circle) & fox tail as editable unit paths.
-const NUB_UNIT = 'M 1 0 C 1 0.5523 0.5523 1 0 1 C -0.5523 1 -1 0.5523 -1 0 C -1 -0.5523 -0.5523 -1 0 -1 C 0.5523 -1 1 -0.5523 1 0 Z';
+const NUB_UNIT = 'M 0.4776 0.32 C 0.4776 0.8723 0.0941 1.2315 -0.4582 1.2315 C -1.0105 1.2315 -1.3261 0.8238 -1.3261 0.2715 C -1.3261 -0.2808 -0.9911 -0.6352 -0.4388 -0.6352 C 0.1527 -0.6497 0.4776 -0.2323 0.4776 0.32 Z';
 const NUB_ASPECT = 1;
-const FOX_UNIT = 'M -0.7778 -0.9535 C 0.1667 -1 0.7222 -0.6977 0.8889 -0.0465 C 1 0.4651 0.75 0.814 0.1389 1 C -0.0278 0.5349 -0.3333 0.2791 -0.7778 0.2326 C -1 -0.186 -1 -0.5814 -0.7778 -0.9535 Z';
+const FOX_UNIT = 'M -0.999 -0.7709 C -0.0545 -0.8174 0.4141 -0.7709 0.7905 -0.417 C 0.8542 -0.2812 1.0395 -0.1164 1.028 0.0533 C 0.8948 -0.0582 0.9816 -0.0048 0.9063 -0.0048 C 1.0975 0.3976 0.999 0.6497 0.889 0.8 C 0.8484 0.6788 0.9353 0.6642 0.8137 0.5721 C 0.7789 0.6739 0.7963 0.7855 0.3967 1.1345 C 0.3793 0.8824 0.3967 0.9018 0.333 0.7855 C 0.2809 0.8436 0.3446 0.7758 0.2693 0.9455 C 0.2172 0.8679 0.3098 0.5576 -0.0434 0.4218 C -0.7152 0.2861 -1.2212 -0.3988 -0.999 -0.7709 Z';
 const FOX_ASPECT = 0.8372;
 
 // ---------------------------------------------------------------------------
