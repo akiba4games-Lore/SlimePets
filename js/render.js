@@ -280,6 +280,28 @@ function fangMouth(x, y, w, pal) {
     `<path d="${map(FANG2_TOOTH)}" fill="#ffffff" stroke="${oc}" stroke-width="${(w * 0.05).toFixed(2)}" stroke-linejoin="round"/>`;
 }
 
+const OPEN_MOUTH = 'M 1 -0.9684 C 0.9937 -0.9107 0.9937 -0.9107 0.9747 -0.8454 C 0.9093 -0.7925 0.8772 -0.7839 0.7975 -0.7839 C 0.7972 -0.7641 0.797 -0.7443 0.7968 -0.7239 C 0.7798 0.4062 0.7798 0.4062 0.4678 0.7853 C 0.2739 0.9998 0.2739 0.9998 0.1358 1 C -0.1143 0.9622 -0.2546 0.8869 -0.4158 0.6521 C -0.639 0.2706 -0.7392 -0.2907 -0.7215 -0.7531 C -0.7487 -0.7519 -0.7758 -0.7506 -0.8038 -0.7493 C -0.8901 -0.7528 -0.9293 -0.7597 -1 -0.8146 C -0.9916 -0.8654 -0.9833 -0.9161 -0.9747 -0.9684 C -0.9412 -0.9618 -0.9412 -0.9618 -0.907 -0.955 C -0.3714 -0.8608 0.2359 -0.8357 0.7656 -0.982 C 0.8521 -1 0.915 -0.9922 1 -0.9684 Z';
+const OPEN_TONGUE = 'M 0.3323 0.0119 C 0.3743 0.0118 0.3743 0.0118 0.4171 0.0116 C 0.4813 0.0151 0.5339 0.0237 0.5949 0.0465 C 0.586 0.2864 0.5007 0.5145 0.3715 0.6956 C 0.2656 0.8055 0.1658 0.8463 0.0264 0.8353 C -0.0958 0.7974 -0.1854 0.7167 -0.2658 0.6001 C -0.2891 0.4869 -0.2853 0.4316 -0.2421 0.3277 C -0.1624 0.1783 -0.064 0.0664 0.083 0.0282 C 0.167 0.0154 0.2477 0.0116 0.3323 0.0119 Z';
+const OPEN_ASPECT = 1.2148;
+// v15.9: player-drawn open mouth (2 traced paths). Dark cavity -> pal.eye +
+// pet outline; the inner blob -> blush (tongue). Scaled to the mouth width.
+function openMouth(x, y, w, pal) {
+  const SX = w * 0.5;
+  const SY = SX / OPEN_ASPECT;
+  const cyc = y + SY * 0.55;
+  const oc = pal.outline;
+  const map = (unit) => {
+    let i = 0;
+    return unit.replace(/-?\d*\.?\d+/g, (n) => {
+      const v = parseFloat(n);
+      const out = (i++ % 2 === 0) ? (x + v * SX) : (cyc + v * SY);
+      return out.toFixed(2);
+    });
+  };
+  return `<path d="${map(OPEN_MOUTH)}" fill="${pal.eye}" stroke="${oc}" stroke-width="2" stroke-linejoin="round"/>` +
+    `<path d="${map(OPEN_TONGUE)}" fill="${pal.blush}"/>`;
+}
+
 // ---------------------------------------------------------------------------
 // Mouths (4 styles).
 // ---------------------------------------------------------------------------
@@ -299,9 +321,8 @@ function mouth(style, x, y, w, pal, mood) {
         `<path d="M ${x} ${y} Q ${x + w * 0.27} ${y + w * 0.4} ${x + w * 0.55} ${y}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`
       );
     case 'open':
-      // v15.9: U-shaped open mouth tapering to a POINT at the bottom (was a
-      // rounded U). Outline; no tongue.
-      return `<path d="M ${x - w * 0.3} ${y - w * 0.02} L ${x - w * 0.3} ${y + w * 0.12} Q ${x - w * 0.22} ${y + w * 0.56} ${x} ${y + w * 0.72} Q ${x + w * 0.22} ${y + w * 0.56} ${x + w * 0.3} ${y + w * 0.12} L ${x + w * 0.3} ${y - w * 0.02} Z" fill="${c}" stroke="${pal.outline}" stroke-width="2" stroke-linejoin="round"/>`;
+      // v15.9: player-drawn open mouth (traced), recolored to the pet.
+      return openMouth(x, y, w, pal);
     case 'w':
       // v15: squashed to HALF its former height (control offsets 0.5->0.25,
       // dip 0.08->0.04) so it reads distinct from 'cat'. Same width.
