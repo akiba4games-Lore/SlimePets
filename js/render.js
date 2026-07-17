@@ -305,7 +305,7 @@ function ears(style, L, pal) {
         // like the reference cat. Still low & close so they attach to the head.
         const ex = mx - flip * 8;
         const ly = topY + 21;
-        const rot = -flip * 20; // top leans toward the center (inward)
+        const rot = flip * 20; // v15.5: rotation flipped (was -flip*20)
         const outer = `<path d="M ${ex - 13} ${ly} Q ${ex - 15} ${ly - 20} ${ex - 3} ${ly - 30} Q ${ex} ${ly - 35} ${ex + 3} ${ly - 30} Q ${ex + 15} ${ly - 20} ${ex + 13} ${ly} Q ${ex} ${ly + 4} ${ex - 13} ${ly} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round" transform="rotate(${rot} ${ex} ${ly})"/>`;
         const innerEar = `<path d="M ${ex - 6} ${ly - 3} Q ${ex - 7} ${ly - 16} ${ex} ${ly - 24} Q ${ex + 7} ${ly - 16} ${ex + 6} ${ly - 3} Q ${ex} ${ly} ${ex - 6} ${ly - 3} Z" fill="${inner}" transform="rotate(${rot} ${ex} ${ly})"/>`;
         return outer + innerEar;
@@ -483,7 +483,7 @@ function pattern(style, L, pal, clipId) {
 // a legacy boolean true is treated as 'blush' defensively.
 // ---------------------------------------------------------------------------
 function cheeksMark(style, L, eyeDX, eyeY, eyeR, pal) {
-  const cyc = eyeY + eyeR * 1.02 + 8; // v15.2: 12px higher than before (was +20)
+  const cyc = eyeY + eyeR * 1.02 + 4; // v15.5: 4px higher (was +8)
   const lx = L.cx - eyeDX - eyeR * 0.7;
   const rx = L.cx + eyeDX + eyeR * 0.7;
   const st = style === true ? 'blush' : String(style);
