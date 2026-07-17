@@ -298,8 +298,9 @@ function mouth(style, x, y, w, pal, mood) {
         `<path d="M ${x} ${y} Q ${x + w * 0.27} ${y + w * 0.4} ${x + w * 0.55} ${y}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`
       );
     case 'open':
-      // v15.2: clean U-shaped open mouth with an outline (no tongue sticking out).
-      return `<path d="M ${x - w * 0.32} ${y - w * 0.02} L ${x - w * 0.32} ${y + w * 0.14} Q ${x - w * 0.32} ${y + w * 0.6} ${x} ${y + w * 0.6} Q ${x + w * 0.32} ${y + w * 0.6} ${x + w * 0.32} ${y + w * 0.14} L ${x + w * 0.32} ${y - w * 0.02} Z" fill="${c}" stroke="${pal.outline}" stroke-width="2" stroke-linejoin="round"/>`;
+      // v15.9: U-shaped open mouth tapering to a POINT at the bottom (was a
+      // rounded U). Outline; no tongue.
+      return `<path d="M ${x - w * 0.3} ${y - w * 0.02} L ${x - w * 0.3} ${y + w * 0.12} Q ${x - w * 0.22} ${y + w * 0.56} ${x} ${y + w * 0.72} Q ${x + w * 0.22} ${y + w * 0.56} ${x + w * 0.3} ${y + w * 0.12} L ${x + w * 0.3} ${y - w * 0.02} Z" fill="${c}" stroke="${pal.outline}" stroke-width="2" stroke-linejoin="round"/>`;
     case 'w':
       // v15: squashed to HALF its former height (control offsets 0.5->0.25,
       // dip 0.08->0.04) so it reads distinct from 'cat'. Same width.
@@ -334,7 +335,7 @@ function ears(style, L, pal) {
       case 'cat': {
         // v15.8: player-drawn cat ear (traced). Outer -> pet body+outline,
         // inner -> blush. Placed on the head; the opposite side is mirrored.
-        const ay = topY + 12;
+        const ay = topY + 22; // v15.9: 10px lower
         const Hr = w * 0.85;
         const SY = Hr / 2;
         const SX = SY * EAR_ASPECT;
