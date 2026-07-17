@@ -346,8 +346,11 @@ function ears(style, L, pal) {
             return out.toFixed(2);
           });
         };
-        return `<path d="${mapEar(EAR_OUTER)}" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="${mapEar(EAR_INNER)}" fill="${inner}"/>`;
+        // v15.9: rotate the top 30° OUTWARD around the ear's base.
+        const rot = flip * 30;
+        return `<g transform="rotate(${rot} ${mx.toFixed(2)} ${ay.toFixed(2)})">` +
+          `<path d="${mapEar(EAR_OUTER)}" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="${mapEar(EAR_INNER)}" fill="${inner}"/></g>`;
       }
       case 'bunny': {
         // v15: 20% bigger and lowered a touch (center was topY-22).
