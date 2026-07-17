@@ -480,7 +480,7 @@ function ears(style, L, pal) {
       case 'round': {
         // v16.9: player-drawn round ear (new shape). Outer + a concentric copy
         // (scaled) as the inner. Drawn once per side (mirrored).
-        const ay = topY + 12;
+        const ay = topY + 18; // v16.10: 6px lower (was +12)
         const mxc = mx + flip * 4;
         const Hr = w * 0.8;
         const SY = Hr / 2;
