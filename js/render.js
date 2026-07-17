@@ -537,6 +537,12 @@ function ears(style, L, pal) {
 const DEVIL_UNIT = 'M 0.5452 -1.0182 C 0.3312 -0.9309 0.2926 -0.8527 0.27 -0.8339 C 0.2512 -0.8182 0.1447 -0.6872 0.1252 -0.6711 C 0.056 -0.4848 0.0428 -0.2251 0.1407 -0.0661 C 0.1669 -0.0325 0.1945 0.0008 0.224 0.0338 C 0.2444 0.059 0.2647 0.0841 0.2857 0.1101 C 0.3661 0.1702 0.4245 0.1976 0.5388 0.2408 C 0.7721 0.3313 0.9304 0.4403 0.9868 0.5828 C 1 0.7075 0.9448 0.784 0.7672 0.8796 C 0.4593 0.9925 0.2535 1 -0.1217 0.997 C -0.1217 0.9815 -0.1217 0.966 -0.1217 0.95 C -0.1675 0.9391 -0.1675 0.9391 -0.2143 0.928 C -0.2822 0.9119 -0.3501 0.8957 -0.418 0.8796 C -0.418 0.864 -0.418 0.8485 -0.418 0.8326 C -0.4669 0.8248 -0.5158 0.8171 -0.5661 0.8091 C -0.6248 0.7444 -0.6743 0.6819 -0.7205 0.6152 C -0.7335 0.5973 -0.7466 0.5793 -0.76 0.5608 C -1 0.2252 -0.9756 -0.1477 -0.6747 -0.475 C -0.5168 -0.622 -0.3282 -0.7469 -0.0723 -0.859 C -0.0377 -0.876 -0.003 -0.893 0.0326 -0.9104 C 0.2598 -0.9842 0.4949 -1.0262 0.5452 -1.0182 Z';
 const DEVIL_ASPECT = 0.4758;
 
+// v16.12: single/double horns as editable unit triangles (were inline paths).
+const HORN1_UNIT = 'M 0 -1 C 0 -1 1 1 1 1 C 1 1 -1 1 -1 1 Z';
+const HORN1_ASPECT = 0.375;
+const HORN2_UNIT = 'M 0 -1 C 0 -1 1 1 1 1 C 1 1 -1 1 -1 1 Z';
+const HORN2_ASPECT = 0.3134;
+
 // ---------------------------------------------------------------------------
 // Horns.
 // ---------------------------------------------------------------------------
@@ -546,15 +552,33 @@ function horns(style, L, pal) {
   const c = pal.horn;
   const st = pal.accentDark;
   switch (style) {
-    case 'single':
-      // v15.2: 50% wider base (18 -> 27). Base still runs behind the body.
-      return `<path d="M ${cx} ${topY - 30} l 13.5 72 l -27 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
-    case 'double':
-      // v15.2: 50% wider base (14 -> 21).
-      return (
-        `<path d="M ${cx - 16} ${topY - 23} l 10.5 67 l -21 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
-        `<path d="M ${cx + 16} ${topY - 23} l 10.5 67 l -21 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`
-      );
+    case 'single': {
+      // v16.12: editable unit triangle. Center (cx, topY+6), half (13.5, 36).
+      const SX = 13.5, SY = 36, ax = cx, ayc = topY + 6;
+      const fill = partColor('hornSingle', 'fill', pal, 'horn');
+      const stroke = partColor('hornSingle', 'stroke', pal, 'accentDark');
+      let i = 0;
+      const d = partUnit('hornSingle', HORN1_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
+        const v = parseFloat(n);
+        return ((i++ % 2 === 0) ? (ax + v * SX) : (ayc + v * SY)).toFixed(2);
+      });
+      return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/>`;
+    }
+    case 'double': {
+      // v16.12: editable unit triangle, rendered twice. Half (10.5, 33.5).
+      const SX = 10.5, SY = 33.5, ayc = topY + 10.5;
+      const fill = partColor('hornDouble', 'fill', pal, 'horn');
+      const stroke = partColor('hornDouble', 'stroke', pal, 'accentDark');
+      const one = (ax) => {
+        let i = 0;
+        const d = partUnit('hornDouble', HORN2_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
+          const v = parseFloat(n);
+          return ((i++ % 2 === 0) ? (ax + v * SX) : (ayc + v * SY)).toFixed(2);
+        });
+        return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/>`;
+      };
+      return one(cx - 16) + one(cx + 16);
+    }
     case 'devil': {
       // v15.9: player-drawn SINGLE devil horn (traced), rendered twice (mirror)
       // in the pet's horn/outline colors — tips up, bases into the head.
@@ -586,6 +610,12 @@ function horns(style, L, pal) {
   }
 }
 
+// v16.12: nub (unit circle) & fox tail as editable unit paths.
+const NUB_UNIT = 'M 1 0 C 1 0.5523 0.5523 1 0 1 C -0.5523 1 -1 0.5523 -1 0 C -1 -0.5523 -0.5523 -1 0 -1 C 0.5523 -1 1 -0.5523 1 0 Z';
+const NUB_ASPECT = 1;
+const FOX_UNIT = 'M -0.7778 -0.9535 C 0.1667 -1 0.7222 -0.6977 0.8889 -0.0465 C 1 0.4651 0.75 0.814 0.1389 1 C -0.0278 0.5349 -0.3333 0.2791 -0.7778 0.2326 C -1 -0.186 -1 -0.5814 -0.7778 -0.9535 Z';
+const FOX_ASPECT = 0.8372;
+
 // ---------------------------------------------------------------------------
 // Tails (behind the body).
 // ---------------------------------------------------------------------------
@@ -596,16 +626,35 @@ function tail(style, L, pal) {
   // v15: nub & curl attach further to the RIGHT so they peek out more.
   const rx = cx + w * 0.98;
   switch (style) {
-    case 'nub':
-      // v15: 20% bigger and pushed clearly outside the silhouette (past the arm).
-      return `<circle cx="${cx + w * 1.12}" cy="${by}" r="15" fill="${pal.bodyDark}" stroke="${pal.outline}" stroke-width="2"/>`;
+    case 'nub': {
+      // v16.12: editable unit circle. r 15 at (cx + w*1.12, by).
+      const R = 15, ax = cx + w * 1.12, ayc = by;
+      const fill = partColor('nub', 'fill', pal, 'bodyDark');
+      const stroke = partColor('nub', 'stroke', pal, 'outline');
+      let i = 0;
+      const d = partUnit('nub', NUB_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
+        const v = parseFloat(n);
+        return ((i++ % 2 === 0) ? (ax + v * R) : (ayc + v * R)).toFixed(2);
+      });
+      return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+    }
     case 'curl':
       // v15.2: open curl that sweeps out, over the top, and ENDS pointing UP
       // (no longer loops back down behind the body).
       return `<path d="M ${rx - 4} ${by} q 31 -7 29 -29 q -3 -20 -20 -18 q -9 1 -7 -11" fill="none" stroke="${pal.bodyDark}" stroke-width="9.6" stroke-linecap="round"/>`;
-    case 'fox':
-      return `<path d="M ${bx - 6} ${by - 6} q 34 -2 40 26 q 4 22 -18 30 q -6 -20 -22 -22 q -8 -18 0 -34 Z" fill="${pal.accent}" stroke="${pal.outline}" stroke-width="2" stroke-linejoin="round"/>` +
+    case 'fox': {
+      // v16.12: editable unit path. Center (bx+6.67, by+15.33), half (24, 28.67).
+      const SX = 24, SY = 28.67, ax = bx + 6.67, ayc = by + 15.33;
+      const fill = partColor('fox', 'fill', pal, 'accent');
+      const stroke = partColor('fox', 'stroke', pal, 'outline');
+      let i = 0;
+      const d = partUnit('fox', FOX_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
+        const v = parseFloat(n);
+        return ((i++ % 2 === 0) ? (ax + v * SX) : (ayc + v * SY)).toFixed(2);
+      });
+      return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/>` +
         `<path d="M ${bx + 30} ${by + 40} q 8 -8 8 -18 q 6 12 -2 22 Z" fill="#ffffff" opacity="0.8"/>`;
+    }
     default:
       return '';
   }
@@ -896,6 +945,10 @@ export const BUILTIN_PART_UNITS = {
   fangTooth: FANG2_TOOTH,
   openMouth: OPEN_MOUTH,
   openTongue: OPEN_TONGUE,
+  hornSingle: HORN1_UNIT,
+  hornDouble: HORN2_UNIT,
+  nub: NUB_UNIT,
+  fox: FOX_UNIT,
 };
 export const BUILTIN_PART_ASPECTS = {
   fluffy: 1,
@@ -912,6 +965,10 @@ export const BUILTIN_PART_ASPECTS = {
   fangTooth: FANG2_ASPECT,
   openMouth: OPEN_ASPECT,
   openTongue: OPEN_ASPECT,
+  hornSingle: HORN1_ASPECT,
+  hornDouble: HORN2_ASPECT,
+  nub: NUB_ASPECT,
+  fox: FOX_ASPECT,
 };
 // The pet palette for a genome (so the editor can seed its color pickers).
 export function paletteOf(genome) { return palette(sanitizeGenome(genome)); }
