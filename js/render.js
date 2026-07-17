@@ -540,7 +540,7 @@ const DEVIL_ASPECT = 0.4758;
 // v16.12: single/double horns as editable unit triangles (were inline paths).
 const HORN1_UNIT = 'M 0 -1 C 0 -1 1.4287 0.8679 1.4804 0.9358 C 1.196 0.9406 -1.4287 0.9358 -1.4287 0.9358 C -1.4287 0.9358 -0.0453 -0.9891 0 -1 Z';
 const HORN1_ASPECT = 0.375;
-const HORN2_UNIT = 'M 0 -1 C 0 -1 1 1 1 1 C 1 1 -1 1 -1 1 Z';
+const HORN2_UNIT = 'M 1.9106 -0.7418 C 1.9106 -0.7418 1.9261 1.1491 1.9261 1.1491 C 1.9261 1.1491 -2.251 0.5091 1.9106 -0.7418 Z';
 const HORN2_ASPECT = 0.3134;
 
 // ---------------------------------------------------------------------------
@@ -615,6 +615,9 @@ const NUB_UNIT = 'M 0.4776 0.32 C 0.4776 0.8723 0.0941 1.2315 -0.4582 1.2315 C -
 const NUB_ASPECT = 1;
 const FOX_UNIT = 'M -0.999 -0.7709 C -0.0545 -0.8174 0.4141 -0.7709 0.7905 -0.417 C 0.8542 -0.2812 1.0395 -0.1164 1.028 0.0533 C 0.8948 -0.0582 0.9816 -0.0048 0.9063 -0.0048 C 1.0975 0.3976 0.999 0.6497 0.889 0.8 C 0.8484 0.6788 0.9353 0.6642 0.8137 0.5721 C 0.7789 0.6739 0.7963 0.7855 0.3967 1.1345 C 0.3793 0.8824 0.3967 0.9018 0.333 0.7855 C 0.2809 0.8436 0.3446 0.7758 0.2693 0.9455 C 0.2172 0.8679 0.3098 0.5576 -0.0434 0.4218 C -0.7152 0.2861 -1.2212 -0.3988 -0.999 -0.7709 Z';
 const FOX_ASPECT = 0.8372;
+// v16.14: curl tail as an editable OPEN unit path (stroke, no Z).
+const CURL_UNIT = 'M -1 1 C 0.3626 0.8391 1 0.5057 0.9121 0 C 0.7802 -0.4598 0.3407 -0.6667 -0.4066 -0.6207 C -0.8022 -0.5977 -0.956 -0.7241 -0.8681 -1';
+const CURL_ASPECT = 0.523;
 
 // ---------------------------------------------------------------------------
 // Tails (behind the body).
@@ -638,10 +641,17 @@ function tail(style, L, pal) {
       });
       return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
     }
-    case 'curl':
-      // v15.2: open curl that sweeps out, over the top, and ENDS pointing UP
-      // (no longer loops back down behind the body).
-      return `<path d="M ${rx - 4} ${by} q 31 -7 29 -29 q -3 -20 -20 -18 q -9 1 -7 -11" fill="none" stroke="${pal.bodyDark}" stroke-width="9.6" stroke-linecap="round"/>`;
+    case 'curl': {
+      // v16.14: editable OPEN unit path (stroke). Center (rx+7.17, by-29).
+      const SX = 15.17, SY = 29, ax = rx + 7.17, ayc = by - 29;
+      const stroke = partColor('curl', 'stroke', pal, 'bodyDark');
+      let i = 0;
+      const d = partUnit('curl', CURL_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
+        const v = parseFloat(n);
+        return ((i++ % 2 === 0) ? (ax + v * SX) : (ayc + v * SY)).toFixed(2);
+      });
+      return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="9.6" stroke-linecap="round"/>`;
+    }
     case 'fox': {
       // v16.12: editable unit path. Center (bx+6.67, by+15.33), half (24, 28.67).
       const SX = 24, SY = 28.67, ax = bx + 6.67, ayc = by + 15.33;
@@ -949,6 +959,7 @@ export const BUILTIN_PART_UNITS = {
   hornDouble: HORN2_UNIT,
   nub: NUB_UNIT,
   fox: FOX_UNIT,
+  curl: CURL_UNIT,
 };
 export const BUILTIN_PART_ASPECTS = {
   fluffy: 1,
@@ -969,6 +980,7 @@ export const BUILTIN_PART_ASPECTS = {
   hornDouble: HORN2_ASPECT,
   nub: NUB_ASPECT,
   fox: FOX_ASPECT,
+  curl: CURL_ASPECT,
 };
 // The pet palette for a genome (so the editor can seed its color pickers).
 export function paletteOf(genome) { return palette(sanitizeGenome(genome)); }
