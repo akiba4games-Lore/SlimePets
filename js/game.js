@@ -125,11 +125,11 @@ const CHANGELOG = [
 
 // Training config.
 const EXERCISES = {
-  Lift: { stat: 'str', label: 'STR', stam: 22, hunger: 7, hygiene: 8, base: 2.4, emoji: '🏋️' },
-  Run: { stat: 'spd', label: 'SPD', stam: 18, hunger: 6, hygiene: 6, base: 2.4, emoji: '🏃' },
-  Swim: { stat: 'hp', label: 'HP', stam: 24, hunger: 8, hygiene: 4, base: 1.6, emoji: '🏊' },
-  Block: { stat: 'def', label: 'DEF', stam: 16, hunger: 5, hygiene: 5, base: 2.2, emoji: '🛡️' },
-  Focus: { stat: 'crit', label: 'CRIT', stam: 20, hunger: 4, hygiene: 3, base: 2.0, emoji: '🎯' },
+  Lift: { stat: 'str', label: 'STR', stam: 22, hunger: 7, hygiene: 8, base: 1.9, emoji: '🏋️' },
+  Run: { stat: 'spd', label: 'SPD', stam: 18, hunger: 6, hygiene: 6, base: 1.9, emoji: '🏃' },
+  Swim: { stat: 'hp', label: 'HP', stam: 24, hunger: 8, hygiene: 4, base: 1.1, emoji: '🏊' },
+  Block: { stat: 'def', label: 'DEF', stam: 16, hunger: 5, hygiene: 5, base: 1.7, emoji: '🛡️' },
+  Focus: { stat: 'crit', label: 'CRIT', stam: 20, hunger: 4, hygiene: 3, base: 1.5, emoji: '🎯' },
 };
 
 // Training-refusal flavor lines live in i18n as lazy.0 … lazy.(N-1).
