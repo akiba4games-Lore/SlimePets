@@ -336,6 +336,7 @@ function ears(style, L, pal) {
         // v15.8: player-drawn cat ear (traced). Outer -> pet body+outline,
         // inner -> blush. Placed on the head; the opposite side is mirrored.
         const ay = topY + 22; // v15.9: 10px lower
+        const mxc = mx - flip * 5; // v15.9: ears 10px closer together (5px/side)
         const Hr = w * 0.85;
         const SY = Hr / 2;
         const SX = SY * EAR_ASPECT;
@@ -343,13 +344,13 @@ function ears(style, L, pal) {
           let i = 0;
           return unit.replace(/-?\d*\.?\d+/g, (n) => {
             const v = parseFloat(n);
-            const out = (i++ % 2 === 0) ? (mx + v * SX * flip) : (ay + (v - 1) * SY);
+            const out = (i++ % 2 === 0) ? (mxc + v * SX * flip) : (ay + (v - 1) * SY);
             return out.toFixed(2);
           });
         };
         // v15.9: rotate the top 30° OUTWARD around the ear's base.
         const rot = flip * 30;
-        return `<g transform="rotate(${rot} ${mx.toFixed(2)} ${ay.toFixed(2)})">` +
+        return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
           `<path d="${mapEar(EAR_OUTER)}" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
           `<path d="${mapEar(EAR_INNER)}" fill="${inner}"/></g>`;
       }
@@ -549,14 +550,16 @@ function cheeksMark(style, L, eyeDX, eyeY, eyeR, pal) {
     return marks(lx) + marks(rx);
   }
   if (st === 'whiskers') {
-    // 3 thin whisker lines per side, fanning outward from the cheek.
+    // v15.9: 3 whisker hairs per side, starting 3px apart vertically (a tuft),
+    // fanning slightly outward.
     const c = pal.outline;
     const wh = (mx, flip) => {
       let s = '';
-      for (const a of [-0.3, 0, 0.3]) {
+      for (const o of [-3, 0, 3]) {
+        const sy = cyc + o;
         const ex = mx + flip * eyeR * 1.6;
-        const ey = cyc + a * eyeR * 1.5;
-        s += `<line x1="${mx}" y1="${cyc}" x2="${ex}" y2="${ey}" stroke="${c}" stroke-width="1.4" stroke-linecap="round" opacity="0.75"/>`;
+        const ey = sy + o * 0.6;
+        s += `<line x1="${mx}" y1="${sy}" x2="${ex}" y2="${ey}" stroke="${c}" stroke-width="1.4" stroke-linecap="round" opacity="0.75"/>`;
       }
       return s;
     };
