@@ -148,23 +148,30 @@ function bodyPath(shape, cx, cy, w, h) {
       return blob(cx, cy, ww, hh);
     }
     case 'fluffy': {
-      // v15.1: blob with CAT-FUR at the BASE — a zigzag bottom edge with tips
-      // pointing down and up (like ruffled fur), top and sides stay round.
-      const lo = cy + h * 1.02; // fur tips pointing DOWN
-      const hi = cy + h * 0.7;  // valleys pointing UP
+      // v15.2 (designer sketch): round blob whose BOTTOM CORNERS burst into
+      // spiky fur tufts pointing out/down; the bottom center stays smooth.
+      const spikes = (side) => // side = 1 (right) or -1 (left); tip/valley pairs
+        `L ${cx + side * w * 1.18} ${cy + h * 0.32} L ${cx + side * w * 0.95} ${cy + h * 0.42} ` +
+        `L ${cx + side * w * 1.16} ${cy + h * 0.55} L ${cx + side * w * 0.88} ${cy + h * 0.62} ` +
+        `L ${cx + side * w * 1.05} ${cy + h * 0.8} L ${cx + side * w * 0.75} ${cy + h * 0.78} ` +
+        `L ${cx + side * w * 0.85} ${cy + h * 1.02} L ${cx + side * w * 0.55} ${cy + h * 0.9} `;
+      const spikesUp = (side) => // same tuft mirrored in draw order (bottom -> up)
+        `L ${cx + side * w * 0.85} ${cy + h * 1.02} L ${cx + side * w * 0.75} ${cy + h * 0.78} ` +
+        `L ${cx + side * w * 1.05} ${cy + h * 0.8} L ${cx + side * w * 0.88} ${cy + h * 0.62} ` +
+        `L ${cx + side * w * 1.16} ${cy + h * 0.55} L ${cx + side * w * 0.95} ${cy + h * 0.42} ` +
+        `L ${cx + side * w * 1.18} ${cy + h * 0.32} L ${cx + side * w * 0.98} ${cy + h * 0.25} `;
       return (
         `M ${cx - w} ${cy} ` +
         `C ${cx - w} ${cy - h * 0.92} ${cx - w * 0.55} ${cy - h} ${cx} ${cy - h} ` +
         `C ${cx + w * 0.55} ${cy - h} ${cx + w} ${cy - h * 0.92} ${cx + w} ${cy} ` +
-        // right side down to where the fur starts
-        `C ${cx + w} ${cy + h * 0.35} ${cx + w * 0.96} ${cy + h * 0.48} ${cx + w * 0.88} ${cy + h * 0.58} ` +
-        // zigzag fur along the bottom (tips down / valleys up)
-        `L ${cx + w * 0.7} ${lo} L ${cx + w * 0.48} ${hi} ` +
-        `L ${cx + w * 0.28} ${lo} L ${cx + w * 0.06} ${hi} ` +
-        `L ${cx - w * 0.16} ${lo} L ${cx - w * 0.38} ${hi} ` +
-        `L ${cx - w * 0.58} ${lo} L ${cx - w * 0.76} ${hi * 0.99} ` +
-        // left side back up
-        `C ${cx - w * 0.96} ${cy + h * 0.48} ${cx - w} ${cy + h * 0.35} ${cx - w} ${cy} Z`
+        // right side eases down to where the tuft starts
+        `C ${cx + w} ${cy + h * 0.12} ${cx + w * 0.99} ${cy + h * 0.2} ${cx + w * 0.98} ${cy + h * 0.25} ` +
+        spikes(1) +
+        // smooth rounded bottom center
+        `C ${cx + w * 0.25} ${cy + h} ${cx - w * 0.25} ${cy + h} ${cx - w * 0.55} ${cy + h * 0.9} ` +
+        spikesUp(-1) +
+        // left side back up to the start
+        `C ${cx - w * 0.99} ${cy + h * 0.2} ${cx - w} ${cy + h * 0.12} ${cx - w} ${cy} Z`
       );
     }
     case 'blob':
@@ -211,6 +218,20 @@ function eye(style, x, y, r, pal, mood) {
     case 'dot':
       // v15: minimal dot eye — a small filled circle (~38% of normal radius).
       return `<circle cx="${x}" cy="${y}" r="${r * 0.38}" fill="${pal.eye}"/>`;
+    case 'blank':
+      // v15.2: like manga but ALL WHITE with a black outline (two concentric
+      // black-ringed white circles) — a bright anime eye.
+      return (
+        `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.26}"/>` +
+        `<circle cx="${x}" cy="${y}" r="${r * 0.4}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.16}"/>`
+      );
+    case 'cat':
+      // v15.2: yellow cat eye with a vertical slit pupil + a small highlight.
+      return (
+        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.82}" ry="${r * 1.14}" fill="#ffd24a" stroke="#1c1026" stroke-width="${r * 0.16}"/>` +
+        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.2}" ry="${r * 0.94}" fill="#1c1026"/>` +
+        `<circle cx="${x - r * 0.34}" cy="${y - r * 0.5}" r="${r * 0.18}" fill="#ffffff"/>`
+      );
     case 'star': // v15: legacy (no longer generated) — kept so old saves still draw.
       return starPath(x, y, r * 1.05, pal.eye) + `<circle cx="${x - r * 0.28}" cy="${y - r * 0.3}" r="${r * 0.26}" fill="#ffffff"/>`;
     case 'sparkle':
@@ -256,22 +277,20 @@ function mouth(style, x, y, w, pal, mood) {
         `<path d="M ${x} ${y} Q ${x + w * 0.27} ${y + w * 0.4} ${x + w * 0.55} ${y}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`
       );
     case 'open':
-      return (
-        `<path d="M ${x - w * 0.4} ${y - w * 0.05} Q ${x} ${y + w * 0.75} ${x + w * 0.4} ${y - w * 0.05} Z" fill="${c}"/>` +
-        `<ellipse cx="${x}" cy="${y + w * 0.32}" rx="${w * 0.22}" ry="${w * 0.16}" fill="${pal.blush}"/>`
-      );
+      // v15.2: clean U-shaped open mouth with an outline (no tongue sticking out).
+      return `<path d="M ${x - w * 0.32} ${y - w * 0.02} L ${x - w * 0.32} ${y + w * 0.14} Q ${x - w * 0.32} ${y + w * 0.6} ${x} ${y + w * 0.6} Q ${x + w * 0.32} ${y + w * 0.6} ${x + w * 0.32} ${y + w * 0.14} L ${x + w * 0.32} ${y - w * 0.02} Z" fill="${c}" stroke="${pal.outline}" stroke-width="2" stroke-linejoin="round"/>`;
     case 'w':
       // v15: squashed to HALF its former height (control offsets 0.5->0.25,
       // dip 0.08->0.04) so it reads distinct from 'cat'. Same width.
       return `<path d="M ${x - w * 0.5} ${y} Q ${x - w * 0.25} ${y + w * 0.25} ${x} ${y + w * 0.04} Q ${x + w * 0.25} ${y + w * 0.25} ${x + w * 0.5} ${y}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
     case 'fang': {
-      // v15.1: fangs 20% shorter and 20% wider, on a FLATTER smile; the mouth
-      // stroke is drawn ON TOP of the teeth so they hang from behind the lip.
-      const smile = `<path d="M ${x - w * 0.42} ${y} Q ${x} ${y + w * 0.35} ${x + w * 0.42} ${y}" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`;
-      const fw = w * 0.2;  // fang width (was 0.17)
-      const fh = w * 0.29; // fang length (was 0.36)
-      const fang = (fx) => `<path d="M ${fx} ${y + w * 0.06} l ${fw} 0 l ${-fw * 0.5} ${fh} Z" fill="#ffffff" stroke="${c}" stroke-width="1" stroke-linejoin="round"/>`;
-      return fang(x - w * 0.28 - fw * 0.5) + fang(x + w * 0.28 - fw * 0.5) + smile;
+      // v15.2: WIDER smile; the two canines tilt a few degrees OUTWARD. Mouth
+      // stroke drawn ON TOP so the teeth hang from behind the lip.
+      const smile = `<path d="M ${x - w * 0.5} ${y} Q ${x} ${y + w * 0.35} ${x + w * 0.5} ${y}" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`;
+      const fw = w * 0.2;  // fang width
+      const fh = w * 0.29; // fang length
+      const fang = (fx, flip) => `<path d="M ${fx} ${y + w * 0.06} l ${fw} 0 l ${-fw * 0.5} ${fh} Z" fill="#ffffff" stroke="${c}" stroke-width="1" stroke-linejoin="round" transform="rotate(${flip * 13} ${fx + fw * 0.5} ${y + w * 0.06})"/>`;
+      return fang(x - w * 0.36 - fw * 0.5, -1) + fang(x + w * 0.36 - fw * 0.5, 1) + smile;
     }
     case 'smile':
     default:
@@ -292,12 +311,14 @@ function ears(style, L, pal) {
   const one = (mx, flip) => {
     switch (style) {
       case 'cat': {
-        // v15.1: closer together (-8 each side) and 10px lower so they attach
-        // to the head instead of floating beside it.
+        // v15.2: ROUNDED cat ears tilted INWARD (tips lean toward the center),
+        // like the reference cat. Still low & close so they attach to the head.
         const ex = mx - flip * 8;
-        const ly = topY + 21; // 10 lower than before (was topY+11)
-        return `<path d="M ${ex} ${ly} l ${flip * 24} ${-31} l ${flip * 6} ${34} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="M ${ex + flip * 5} ${ly - 3} l ${flip * 12} ${-18} l ${flip * 3} ${19} Z" fill="${inner}"/>`;
+        const ly = topY + 21;
+        const rot = -flip * 20; // top leans toward the center (inward)
+        const outer = `<path d="M ${ex - 13} ${ly} Q ${ex - 15} ${ly - 20} ${ex - 3} ${ly - 30} Q ${ex} ${ly - 35} ${ex + 3} ${ly - 30} Q ${ex + 15} ${ly - 20} ${ex + 13} ${ly} Q ${ex} ${ly + 4} ${ex - 13} ${ly} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round" transform="rotate(${rot} ${ex} ${ly})"/>`;
+        const innerEar = `<path d="M ${ex - 6} ${ly - 3} Q ${ex - 7} ${ly - 16} ${ex} ${ly - 24} Q ${ex + 7} ${ly - 16} ${ex + 6} ${ly - 3} Q ${ex} ${ly} ${ex - 6} ${ly - 3} Z" fill="${inner}" transform="rotate(${rot} ${ex} ${ly})"/>`;
+        return outer + innerEar;
       }
       case 'bunny': {
         // v15: 20% bigger and lowered a touch (center was topY-22).
@@ -328,21 +349,27 @@ function horns(style, L, pal) {
   const st = pal.accentDark;
   switch (style) {
     case 'single':
-      // v15.1: base extended 40px downward (hidden behind the body) so the horn
-      // is clearly rooted in the head instead of floating above it.
-      return `<path d="M ${cx} ${topY - 30} l 9 72 l -18 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
+      // v15.2: 50% wider base (18 -> 27). Base still runs behind the body.
+      return `<path d="M ${cx} ${topY - 30} l 13.5 72 l -27 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
     case 'double':
-      // v15.1: base extended 40px downward (hidden behind the body).
+      // v15.2: 50% wider base (14 -> 21).
       return (
-        `<path d="M ${cx - 16} ${topY - 23} l 7 67 l -14 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
-        `<path d="M ${cx + 16} ${topY - 23} l 7 67 l -14 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`
+        `<path d="M ${cx - 16} ${topY - 23} l 10.5 67 l -21 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
+        `<path d="M ${cx + 16} ${topY - 23} l 10.5 67 l -21 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`
       );
     case 'devil': {
-      // v15.1: same visible curve, but the base runs 40px further down (hidden
-      // behind the body) so the horns anchor into the head.
+      // v15.2: bull/devil horns — base flares OUTWARD from the sides, then the
+      // horn curves up and the TIP hooks back toward the CENTER. Base runs down
+      // behind the body so it anchors into the head.
       const horn = (mx, flip) =>
-        `<path d="M ${mx} ${topY + 56} L ${mx} ${topY + 16} q ${flip * 3} ${-26} ${flip * 22} ${-40} q ${flip * -10} ${20} ${flip * -10} ${30} l 0 40 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
-      return horn(cx - 26, -1) + horn(cx + 26, 1);
+        `<path d="M ${mx} ${topY + 56} ` +
+        `L ${mx} ${topY + 14} ` +
+        `q ${flip * 16} ${-6} ${flip * 26} ${-24} ` +  // flare outward + up
+        `q ${flip * 6} ${-12} ${flip * -6} ${-20} ` +   // tip hooks back toward center
+        `q ${flip * -2} ${12} ${flip * -14} ${18} ` +   // inner edge back down
+        `q ${flip * -8} ${10} ${flip * -16} ${12} ` +
+        `L ${mx} ${topY + 54} Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
+      return horn(cx - 24, -1) + horn(cx + 24, 1);
     }
     case 'antlers': { // v15: legacy (no longer generated) — kept so old saves still draw.
       const branch = (mx, flip) =>
@@ -368,8 +395,9 @@ function tail(style, L, pal) {
       // v15: 20% bigger and pushed clearly outside the silhouette (past the arm).
       return `<circle cx="${cx + w * 1.12}" cy="${by}" r="15" fill="${pal.bodyDark}" stroke="${pal.outline}" stroke-width="2"/>`;
     case 'curl':
-      // v15: 20% bigger (deltas & stroke ×1.2) and pushed further right.
-      return `<path d="M ${rx - 4} ${by} q 31 -7 29 -29 q -2 -19 -22 -14 q -12 4 -7 14" fill="none" stroke="${pal.bodyDark}" stroke-width="9.6" stroke-linecap="round"/>`;
+      // v15.2: open curl that sweeps out, over the top, and ENDS pointing UP
+      // (no longer loops back down behind the body).
+      return `<path d="M ${rx - 4} ${by} q 31 -7 29 -29 q -3 -20 -20 -18 q -9 1 -7 -11" fill="none" stroke="${pal.bodyDark}" stroke-width="9.6" stroke-linecap="round"/>`;
     case 'fox':
       return `<path d="M ${bx - 6} ${by - 6} q 34 -2 40 26 q 4 22 -18 30 q -6 -20 -22 -22 q -8 -18 0 -34 Z" fill="${pal.accent}" stroke="${pal.outline}" stroke-width="2" stroke-linejoin="round"/>` +
         `<path d="M ${bx + 30} ${by + 40} q 8 -8 8 -18 q 6 12 -2 22 Z" fill="#ffffff" opacity="0.8"/>`;
@@ -465,7 +493,7 @@ function pattern(style, L, pal, clipId) {
 // a legacy boolean true is treated as 'blush' defensively.
 // ---------------------------------------------------------------------------
 function cheeksMark(style, L, eyeDX, eyeY, eyeR, pal) {
-  const cyc = eyeY + eyeR * 1.02 + 20; // v15.1: all cheek marks 20px lower
+  const cyc = eyeY + eyeR * 1.02 + 8; // v15.2: 12px higher than before (was +20)
   const lx = L.cx - eyeDX - eyeR * 0.7;
   const rx = L.cx + eyeDX + eyeR * 0.7;
   const st = style === true ? 'blush' : String(style);

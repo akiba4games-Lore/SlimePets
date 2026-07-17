@@ -30,7 +30,7 @@ export function randomSeed() {
 // v15.1: 'floppy' ear and 'stripes'/'vshape' patterns removed from generation
 // (render cases kept as legacy for pets that already rolled them).
 export const BODY_SHAPES = ['blob', 'drop', 'square', 'spiky', 'mochi', 'fluffy'];
-export const EYE_STYLES = ['round', 'sparkle', 'sleepy', 'oval', 'manga', 'dot'];
+export const EYE_STYLES = ['round', 'sleepy', 'oval', 'manga', 'dot', 'blank', 'cat'];
 export const MOUTH_STYLES = ['smile', 'cat', 'open', 'w', 'fang'];
 export const EAR_STYLES = ['none', 'cat', 'bunny', 'round'];
 export const HORN_STYLES = ['none', 'single', 'double', 'devil'];
