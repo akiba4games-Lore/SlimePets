@@ -449,7 +449,7 @@ function ears(style, L, pal) {
         // v16.2: player-drawn bunny ear (traced). Outer -> pet body+outline,
         // inner -> blush. Tall ear, drawn once per side (mirrored), tilted out.
         const ay = topY + 18; // v16.4: 10px lower (was +8)
-        const mxc = mx - flip * 8; // v16.6: 10px closer (was +flip*2)
+        const mxc = mx + flip * 2; // v16.8: 10px further apart (was -flip*8)
         const Hr = w * 1.35;
         const SY = Hr / 2;
         const SX = SY * partAspect('bunnyOuter', BUNNY_ASPECT);
