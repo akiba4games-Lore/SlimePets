@@ -27,14 +27,16 @@ export function randomSeed() {
 // v15: 'fluffy' body added; 'star' eye removed (render case kept as legacy);
 // 'manga'/'dot' eyes added; 'fang' mouth added; 'antlers' horn removed (legacy
 // render kept) + 'devil' added; new patterns; cheeks is now a STYLE (below).
+// v15.1: 'floppy' ear and 'stripes'/'vshape' patterns removed from generation
+// (render cases kept as legacy for pets that already rolled them).
 export const BODY_SHAPES = ['blob', 'drop', 'square', 'spiky', 'mochi', 'fluffy'];
 export const EYE_STYLES = ['round', 'sparkle', 'sleepy', 'oval', 'manga', 'dot'];
 export const MOUTH_STYLES = ['smile', 'cat', 'open', 'w', 'fang'];
-export const EAR_STYLES = ['none', 'cat', 'bunny', 'floppy', 'round'];
+export const EAR_STYLES = ['none', 'cat', 'bunny', 'round'];
 export const HORN_STYLES = ['none', 'single', 'double', 'devil'];
 export const NOSE_STYLES = ['none', 'dot', 'triangle'];
 export const TAIL_STYLES = ['none', 'nub', 'curl', 'fox'];
-export const PATTERN_STYLES = ['none', 'spots', 'belly', 'stripes', 'vshape', 'cheekdots'];
+export const PATTERN_STYLES = ['none', 'spots', 'belly', 'cheekdots'];
 // v15: cheeks converted from a boolean to a style string (single rng draw, see
 // generateGenome). 'none' = no cheek feature; the rest are drawn by render.js.
 export const CHEEK_STYLES = ['none', 'blush', 'shy', 'whiskers'];
