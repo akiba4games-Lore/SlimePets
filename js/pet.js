@@ -24,14 +24,20 @@ export function randomSeed() {
 // ---------------------------------------------------------------------------
 // Genome tables & helpers
 // ---------------------------------------------------------------------------
-export const BODY_SHAPES = ['blob', 'drop', 'square', 'spiky', 'mochi'];
-export const EYE_STYLES = ['round', 'sparkle', 'sleepy', 'oval', 'star'];
-export const MOUTH_STYLES = ['smile', 'cat', 'open', 'w'];
+// v15: 'fluffy' body added; 'star' eye removed (render case kept as legacy);
+// 'manga'/'dot' eyes added; 'fang' mouth added; 'antlers' horn removed (legacy
+// render kept) + 'devil' added; new patterns; cheeks is now a STYLE (below).
+export const BODY_SHAPES = ['blob', 'drop', 'square', 'spiky', 'mochi', 'fluffy'];
+export const EYE_STYLES = ['round', 'sparkle', 'sleepy', 'oval', 'manga', 'dot'];
+export const MOUTH_STYLES = ['smile', 'cat', 'open', 'w', 'fang'];
 export const EAR_STYLES = ['none', 'cat', 'bunny', 'floppy', 'round'];
-export const HORN_STYLES = ['none', 'single', 'double', 'antlers'];
+export const HORN_STYLES = ['none', 'single', 'double', 'devil'];
 export const NOSE_STYLES = ['none', 'dot', 'triangle'];
 export const TAIL_STYLES = ['none', 'nub', 'curl', 'fox'];
-export const PATTERN_STYLES = ['none', 'spots', 'belly'];
+export const PATTERN_STYLES = ['none', 'spots', 'belly', 'stripes', 'vshape', 'cheekdots'];
+// v15: cheeks converted from a boolean to a style string (single rng draw, see
+// generateGenome). 'none' = no cheek feature; the rest are drawn by render.js.
+export const CHEEK_STYLES = ['none', 'blush', 'shy', 'whiskers'];
 
 // ---------------------------------------------------------------------------
 // Elements (DESIGN v4 §1). Fixed for life; generated from seed.
@@ -136,7 +142,11 @@ export function generateGenome(seed) {
   const ears = pick(rng, EAR_STYLES);
   const horn = pick(rng, HORN_STYLES);
   const nose = pick(rng, NOSE_STYLES);
-  const cheeks = rng() < 0.72;
+  // v15: cheeks is a STYLE now, but still ONE rng draw (same position in the
+  // sequence as the old boolean) so downstream part/stat draws never shift.
+  // ~70% chance of some cheek feature, split blush/shy/whiskers.
+  const rc = rng();
+  const cheeks = rc < 0.34 ? 'blush' : rc < 0.52 ? 'shy' : rc < 0.70 ? 'whiskers' : 'none';
   const tail = pick(rng, TAIL_STYLES);
   const pattern = pick(rng, PATTERN_STYLES);
   const maxStamina = irange(rng, 60, 140);
@@ -187,6 +197,11 @@ export function sanitizeGenome(g) {
   out.affinity = { ...base.affinity, ...(g.affinity || {}) };
   // Element is fixed-from-seed; drop any stored garbage and fall back to base.
   if (ELEMENTS.indexOf(out.element) < 0) out.element = base.element;
+  // v15: cheeks migrated boolean -> style string. Legacy true -> 'blush',
+  // false -> 'none'; any unknown/garbage value falls back to the seed's base.
+  if (g.cheeks === true) out.cheeks = 'blush';
+  else if (g.cheeks === false) out.cheeks = 'none';
+  else if (CHEEK_STYLES.indexOf(out.cheeks) < 0) out.cheeks = base.cheeks;
   // Body color ALWAYS follows the element — recompute (ignoring any stored
   // hue/sat/light) so migrated saves get element-appropriate colors (§1).
   const col = deriveColor(out.element, colorStream(out.seed));

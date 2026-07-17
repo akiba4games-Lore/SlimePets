@@ -57,7 +57,9 @@ function features(stage, g) {
     body: true,
     eyes: true,
     mouth: true,
-    cheeks: !!g.cheeks,
+    // v15: cheeks is a style string ('none' | 'blush' | 'shy' | 'whiskers').
+    // Visible when it's a non-'none' style; legacy boolean true stays visible.
+    cheeks: g.cheeks === true || (typeof g.cheeks === 'string' && g.cheeks !== 'none'),
     ears: false,
     horn: false,
     nose: false,
@@ -145,6 +147,28 @@ function bodyPath(shape, cx, cy, w, h) {
         hh = h * 0.82;
       return blob(cx, cy, ww, hh);
     }
+    case 'fluffy': {
+      // v15: blob with scalloped fur tufts bulging on the left & right sides
+      // (3 soft bumps per side). Cute, rounded, no sharp points.
+      const bx = w * 1.12; // how far the tufts bulge out past the body
+      return (
+        `M ${cx} ${cy - h} ` +
+        // top: rounded shoulder down to the upper-right edge
+        `C ${cx + w * 0.55} ${cy - h} ${cx + w} ${cy - h * 0.72} ${cx + w * 0.9} ${cy - h * 0.5} ` +
+        // right side: 3 scalloped tufts going down
+        `Q ${cx + bx} ${cy - h * 0.38} ${cx + w * 0.9} ${cy - h * 0.16} ` +
+        `Q ${cx + bx} ${cy - h * 0.04} ${cx + w * 0.9} ${cy + h * 0.18} ` +
+        `Q ${cx + bx} ${cy + h * 0.32} ${cx + w * 0.82} ${cy + h * 0.5} ` +
+        // bottom: round
+        `C ${cx + w * 0.5} ${cy + h} ${cx - w * 0.5} ${cy + h} ${cx - w * 0.82} ${cy + h * 0.5} ` +
+        // left side: 3 scalloped tufts going up
+        `Q ${cx - bx} ${cy + h * 0.32} ${cx - w * 0.9} ${cy + h * 0.18} ` +
+        `Q ${cx - bx} ${cy - h * 0.04} ${cx - w * 0.9} ${cy - h * 0.16} ` +
+        `Q ${cx - bx} ${cy - h * 0.38} ${cx - w * 0.9} ${cy - h * 0.5} ` +
+        // back up to the top
+        `C ${cx - w} ${cy - h * 0.72} ${cx - w * 0.55} ${cy - h} ${cx} ${cy - h} Z`
+      );
+    }
     case 'blob':
     default:
       return blob(cx, cy, w, h);
@@ -179,7 +203,19 @@ function eye(style, x, y, r, pal, mood) {
         `<ellipse cx="${x}" cy="${y}" rx="${r * 0.72}" ry="${r * 1.12}" fill="${pal.eye}"/>` +
         sparkle
       );
-    case 'star':
+    case 'manga':
+      // v15: big shoujo eye — TALL dark iris with an upper lash/lid arc and 2
+      // white highlights (big upper, small lower). Clearly taller than 'round'.
+      return (
+        `<ellipse cx="${x}" cy="${y + r * 0.1}" rx="${r * 0.92}" ry="${r * 1.34}" fill="${pal.eye}"/>` +
+        `<path d="M ${x - r * 1.05} ${y - r * 0.9} Q ${x} ${y - r * 1.75} ${x + r * 1.05} ${y - r * 0.9}" fill="none" stroke="${pal.eye}" stroke-width="${r * 0.3}" stroke-linecap="round"/>` +
+        `<circle cx="${x - r * 0.3}" cy="${y - r * 0.45}" r="${r * 0.46}" fill="#ffffff"/>` +
+        `<circle cx="${x + r * 0.3}" cy="${y + r * 0.62}" r="${r * 0.2}" fill="#ffffff" opacity="0.9"/>`
+      );
+    case 'dot':
+      // v15: minimal dot eye — a small filled circle (~38% of normal radius).
+      return `<circle cx="${x}" cy="${y}" r="${r * 0.38}" fill="${pal.eye}"/>`;
+    case 'star': // v15: legacy (no longer generated) — kept so old saves still draw.
       return starPath(x, y, r * 1.05, pal.eye) + `<circle cx="${x - r * 0.28}" cy="${y - r * 0.3}" r="${r * 0.26}" fill="#ffffff"/>`;
     case 'sparkle':
       return (
@@ -229,7 +265,17 @@ function mouth(style, x, y, w, pal, mood) {
         `<ellipse cx="${x}" cy="${y + w * 0.32}" rx="${w * 0.22}" ry="${w * 0.16}" fill="${pal.blush}"/>`
       );
     case 'w':
-      return `<path d="M ${x - w * 0.5} ${y} Q ${x - w * 0.25} ${y + w * 0.5} ${x} ${y + w * 0.08} Q ${x + w * 0.25} ${y + w * 0.5} ${x + w * 0.5} ${y}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+      // v15: squashed to HALF its former height (control offsets 0.5->0.25,
+      // dip 0.08->0.04) so it reads distinct from 'cat'. Same width.
+      return `<path d="M ${x - w * 0.5} ${y} Q ${x - w * 0.25} ${y + w * 0.25} ${x} ${y + w * 0.04} Q ${x + w * 0.25} ${y + w * 0.25} ${x + w * 0.5} ${y}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+    case 'fang': {
+      // v15: a smile with two little white canine teeth hanging from the edges.
+      const smile = `<path d="M ${x - w * 0.42} ${y} Q ${x} ${y + w * 0.6} ${x + w * 0.42} ${y}" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`;
+      const fw = w * 0.17; // fang width
+      const fh = w * 0.36; // fang length (downward)
+      const fang = (fx) => `<path d="M ${fx} ${y + w * 0.1} l ${fw} 0 l ${-fw * 0.5} ${fh} Z" fill="#ffffff" stroke="${c}" stroke-width="1" stroke-linejoin="round"/>`;
+      return smile + fang(x - w * 0.3 - fw * 0.5) + fang(x + w * 0.3 - fw * 0.5);
+    }
     case 'smile':
     default:
       return `<path d="M ${x - w * 0.42} ${y} Q ${x} ${y + w * 0.6} ${x + w * 0.42} ${y}" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`;
@@ -248,17 +294,24 @@ function ears(style, L, pal) {
   const st = pal.outline;
   const one = (mx, flip) => {
     switch (style) {
-      case 'cat':
-        return `<path d="M ${mx} ${topY + 6} l ${flip * 16} ${-26} l ${flip * 4} ${28} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="M ${mx + flip * 4} ${topY + 3} l ${flip * 8} ${-15} l ${flip * 2} ${16} Z" fill="${inner}"/>`;
-      case 'bunny':
-        return `<ellipse cx="${mx + flip * 6}" cy="${topY - 22}" rx="9" ry="26" fill="${fill}" stroke="${st}" stroke-width="2" transform="rotate(${flip * 10} ${mx + flip * 6} ${topY - 22})"/>` +
-          `<ellipse cx="${mx + flip * 6}" cy="${topY - 24}" rx="4.5" ry="18" fill="${inner}" transform="rotate(${flip * 10} ${mx + flip * 6} ${topY - 22})"/>`;
+      case 'cat': {
+        // v15: 20% bigger + EXTRA width, and sits a bit lower on the head.
+        const ly = topY + 11; // lower than before (was topY+6)
+        return `<path d="M ${mx} ${ly} l ${flip * 24} ${-31} l ${flip * 6} ${34} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="M ${mx + flip * 5} ${ly - 3} l ${flip * 12} ${-18} l ${flip * 3} ${19} Z" fill="${inner}"/>`;
+      }
+      case 'bunny': {
+        // v15: 20% bigger and lowered a touch (center was topY-22).
+        const by = topY - 16;
+        return `<ellipse cx="${mx + flip * 6}" cy="${by}" rx="10.8" ry="31" fill="${fill}" stroke="${st}" stroke-width="2" transform="rotate(${flip * 10} ${mx + flip * 6} ${by})"/>` +
+          `<ellipse cx="${mx + flip * 6}" cy="${by - 2}" rx="5.4" ry="22" fill="${inner}" transform="rotate(${flip * 10} ${mx + flip * 6} ${by})"/>`;
+      }
       case 'floppy':
         return `<path d="M ${mx} ${topY + 8} q ${flip * 26} ${-4} ${flip * 30} ${28} q ${flip * -14} ${8} ${flip * -26} ${-6} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
       case 'round':
-        return `<circle cx="${mx + flip * 4}" cy="${topY - 6}" r="14" fill="${fill}" stroke="${st}" stroke-width="2"/>` +
-          `<circle cx="${mx + flip * 4}" cy="${topY - 6}" r="7" fill="${inner}"/>`;
+        // v15: 20% bigger (r 14->16.8, inner 7->8.4).
+        return `<circle cx="${mx + flip * 4}" cy="${topY - 6}" r="16.8" fill="${fill}" stroke="${st}" stroke-width="2"/>` +
+          `<circle cx="${mx + flip * 4}" cy="${topY - 6}" r="8.4" fill="${inner}"/>`;
       default:
         return '';
     }
@@ -276,13 +329,22 @@ function horns(style, L, pal) {
   const st = pal.accentDark;
   switch (style) {
     case 'single':
-      return `<path d="M ${cx} ${topY - 22} l 9 24 l -18 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
+      // v15: ~35% longer (length 24 -> 32, apex raised).
+      return `<path d="M ${cx} ${topY - 30} l 9 32 l -18 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
     case 'double':
+      // v15: ~35% longer (length 20 -> 27, apex raised).
       return (
-        `<path d="M ${cx - 16} ${topY - 16} l 7 20 l -14 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
-        `<path d="M ${cx + 16} ${topY - 16} l 7 20 l -14 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`
+        `<path d="M ${cx - 16} ${topY - 23} l 7 27 l -14 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
+        `<path d="M ${cx + 16} ${topY - 23} l 7 27 l -14 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`
       );
-    case 'antlers': {
+    case 'devil': {
+      // v15: two curved devil horns emerging from the SIDES of the head and
+      // curving upward/outward to a point — long enough to read at HUD size.
+      const horn = (mx, flip) =>
+        `<path d="M ${mx} ${topY + 16} q ${flip * 3} ${-26} ${flip * 22} ${-40} q ${flip * -10} ${20} ${flip * -10} ${30} Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
+      return horn(cx - 26, -1) + horn(cx + 26, 1);
+    }
+    case 'antlers': { // v15: legacy (no longer generated) — kept so old saves still draw.
       const branch = (mx, flip) =>
         `<path d="M ${mx} ${topY + 4} q ${flip * 4} ${-20} ${flip * 2} ${-30} m 0 10 q ${flip * 10} ${-6} ${flip * 16} ${-10} m ${flip * -16} 20 q ${flip * 12} ${-3} ${flip * 18} 0" fill="none" stroke="${st}" stroke-width="3.4" stroke-linecap="round"/>`;
       return branch(cx - 12, -1) + branch(cx + 12, 1);
@@ -299,11 +361,15 @@ function tail(style, L, pal) {
   const { cx, cy, w, h } = L;
   const bx = cx + w * 0.86;
   const by = cy + h * 0.55;
+  // v15: nub & curl attach further to the RIGHT so they peek out more.
+  const rx = cx + w * 0.98;
   switch (style) {
     case 'nub':
-      return `<circle cx="${bx}" cy="${by}" r="12" fill="${pal.bodyDark}" stroke="${pal.outline}" stroke-width="2"/>`;
+      // v15: 20% bigger and pushed clearly outside the silhouette (past the arm).
+      return `<circle cx="${cx + w * 1.12}" cy="${by}" r="15" fill="${pal.bodyDark}" stroke="${pal.outline}" stroke-width="2"/>`;
     case 'curl':
-      return `<path d="M ${bx - 4} ${by} q 26 -6 24 -24 q -2 -16 -18 -12 q -10 3 -6 12" fill="none" stroke="${pal.bodyDark}" stroke-width="8" stroke-linecap="round"/>`;
+      // v15: 20% bigger (deltas & stroke ×1.2) and pushed further right.
+      return `<path d="M ${rx - 4} ${by} q 31 -7 29 -29 q -2 -19 -22 -14 q -12 4 -7 14" fill="none" stroke="${pal.bodyDark}" stroke-width="9.6" stroke-linecap="round"/>`;
     case 'fox':
       return `<path d="M ${bx - 6} ${by - 6} q 34 -2 40 26 q 4 22 -18 30 q -6 -20 -22 -22 q -8 -18 0 -34 Z" fill="${pal.accent}" stroke="${pal.outline}" stroke-width="2" stroke-linejoin="round"/>` +
         `<path d="M ${bx + 30} ${by + 40} q 8 -8 8 -18 q 6 12 -2 22 Z" fill="#ffffff" opacity="0.8"/>`;
@@ -354,7 +420,86 @@ function pattern(style, L, pal, clipId) {
       `</g>`
     );
   }
+  if (style === 'stripes') {
+    // v15: a few soft, slightly-curved horizontal stripes clipped to the body.
+    // Kept on the LOWER body so they never cross the face (the face sits mid-body).
+    const ys = [cy + h * 0.42, cy + h * 0.66, cy + h * 0.9];
+    return (
+      `<g clip-path="url(#${clipId})" opacity="0.5">` +
+      ys.map((sy) => `<path d="M ${cx - w * 1.1} ${sy} Q ${cx} ${sy + h * 0.1} ${cx + w * 1.1} ${sy}" fill="none" stroke="${pal.accentDark}" stroke-width="${h * 0.11}" stroke-linecap="round"/>`).join('') +
+      `</g>`
+    );
+  }
+  if (style === 'vshape') {
+    // v15: a V-shaped chevron marking on the belly, below the mouth.
+    const vy = cy + h * 0.42;
+    const vw = w * 0.55;
+    const vh = h * 0.38;
+    return (
+      `<g clip-path="url(#${clipId})">` +
+      `<path d="M ${cx - vw} ${vy} L ${cx} ${vy + vh} L ${cx + vw} ${vy}" fill="none" stroke="${pal.accentDark}" stroke-width="${h * 0.13}" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>` +
+      `</g>`
+    );
+  }
+  if (style === 'cheekdots') {
+    // v15: two darker BODY markings, one on each cheek area (distinct from the
+    // blush cheek feature — this rides on the body, patterned like spots).
+    const dy = cy + h * 0.22;
+    const dx = w * 0.66;
+    const rr = w * 0.17;
+    return (
+      `<g clip-path="url(#${clipId})">` +
+      `<circle cx="${cx - dx}" cy="${dy}" r="${rr}" fill="${pal.accentDark}" opacity="0.6"/>` +
+      `<circle cx="${cx + dx}" cy="${dy}" r="${rr}" fill="${pal.accentDark}" opacity="0.6"/>` +
+      `</g>`
+    );
+  }
   return '';
+}
+
+// ---------------------------------------------------------------------------
+// Cheek marks (v15): 'blush' (soft ellipses), 'shy' (diagonal embarrassment
+// lines) or 'whiskers' (outward cat whiskers). All sit a touch LOWER than the
+// old blush position. 'none' is handled by the feature gate (never reaches here);
+// a legacy boolean true is treated as 'blush' defensively.
+// ---------------------------------------------------------------------------
+function cheeksMark(style, L, eyeDX, eyeY, eyeR, pal) {
+  const cyc = eyeY + eyeR * 1.02; // lower than the previous blush (was eyeR*0.7)
+  const lx = L.cx - eyeDX - eyeR * 0.7;
+  const rx = L.cx + eyeDX + eyeR * 0.7;
+  const st = style === true ? 'blush' : String(style);
+  if (st === 'shy') {
+    // 3 short diagonal red lines per cheek (anime embarrassment marks).
+    const c = pal.blush;
+    const marks = (mx) => {
+      let s = '';
+      for (let i = 0; i < 3; i++) {
+        const ox = mx + (i - 1) * eyeR * 0.4;
+        s += `<line x1="${ox - eyeR * 0.18}" y1="${cyc - eyeR * 0.38}" x2="${ox + eyeR * 0.18}" y2="${cyc + eyeR * 0.38}" stroke="${c}" stroke-width="${Math.max(2, eyeR * 0.22)}" stroke-linecap="round"/>`;
+      }
+      return s;
+    };
+    return marks(lx) + marks(rx);
+  }
+  if (st === 'whiskers') {
+    // 3 thin whisker lines per side, fanning outward from the cheek.
+    const c = pal.outline;
+    const wh = (mx, flip) => {
+      let s = '';
+      for (const a of [-0.3, 0, 0.3]) {
+        const ex = mx + flip * eyeR * 1.6;
+        const ey = cyc + a * eyeR * 1.5;
+        s += `<line x1="${mx}" y1="${cyc}" x2="${ex}" y2="${ey}" stroke="${c}" stroke-width="1.4" stroke-linecap="round" opacity="0.75"/>`;
+      }
+      return s;
+    };
+    return wh(lx, -1) + wh(rx, 1);
+  }
+  // default 'blush': the classic soft pink ellipses, just a bit lower.
+  return (
+    `<ellipse cx="${lx}" cy="${cyc}" rx="${eyeR * 0.72}" ry="${eyeR * 0.5}" fill="${pal.blush}" opacity="0.8"/>` +
+    `<ellipse cx="${rx}" cy="${cyc}" rx="${eyeR * 0.72}" ry="${eyeR * 0.5}" fill="${pal.blush}" opacity="0.8"/>`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -577,9 +722,8 @@ export function renderPet(svgEl, genome, stage, opts) {
   // Face.
   let face = '';
   if (f.cheeks) {
-    face +=
-      `<ellipse cx="${L.cx - eyeDX - eyeR * 0.7}" cy="${eyeY + eyeR * 0.7}" rx="${eyeR * 0.72}" ry="${eyeR * 0.5}" fill="${pal.blush}" opacity="0.8"/>` +
-      `<ellipse cx="${L.cx + eyeDX + eyeR * 0.7}" cy="${eyeY + eyeR * 0.7}" rx="${eyeR * 0.72}" ry="${eyeR * 0.5}" fill="${pal.blush}" opacity="0.8"/>`;
+    // v15: cheeks are a style now (blush / shy / whiskers) — drawn a bit lower.
+    face += cheeksMark(g.cheeks, L, eyeDX, eyeY, eyeR, pal);
   }
   const eyesG =
     `<g class="sp-eyes">` +
