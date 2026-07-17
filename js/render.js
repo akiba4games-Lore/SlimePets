@@ -157,6 +157,35 @@ function blob(cx, cy, w, h) {
   );
 }
 
+// v15.10: live-editable parts. The part editor (editor.html) can override a
+// traced unit-path at runtime via window.SLIME_PART_OVERRIDES[key]; if none is
+// set we fall back to the built-in shape below.
+function partUnit(key, fallback) {
+  try {
+    const o = typeof window !== 'undefined' && window.SLIME_PART_OVERRIDES;
+    if (o && typeof o[key] === 'string' && o[key].trim()) return o[key];
+  } catch (_) { /* no window (node) */ }
+  return fallback;
+}
+// Per-part aspect override (needed by parts scaled with aspect: horn, ear, mouths).
+function partAspect(key, fallback) {
+  try {
+    const a = typeof window !== 'undefined' && window.SLIME_PART_ASPECTS;
+    if (a && typeof a[key] === 'number' && a[key] > 0) return a[key];
+  } catch (_) { /* no window (node) */ }
+  return fallback;
+}
+// Load any saved part-shape overrides so a shape drawn in the editor persists
+// into the game. Guarded so Node/tests (no window/localStorage) skip it.
+try {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const saved = localStorage.getItem('slime_part_overrides');
+    if (saved) window.SLIME_PART_OVERRIDES = Object.assign({}, window.SLIME_PART_OVERRIDES, JSON.parse(saved));
+    const savedA = localStorage.getItem('slime_part_aspects');
+    if (savedA) window.SLIME_PART_ASPECTS = Object.assign({}, window.SLIME_PART_ASPECTS, JSON.parse(savedA));
+  }
+} catch (_) { /* ignore */ }
+
 // v15.4: the 'fluffy' body is a hand-drawn silhouette, traced and normalized to
 // a unit box (coords in [-1,1] around origin). fluffyPath() maps that unit path
 // onto (cx,cy,w,h) — every number is an x/y pair, so a single running index maps
@@ -165,7 +194,7 @@ const FLUFFY_UNIT = 'M 0.0237 -0.9992 C 0.0288 -0.9992 0.0339 -0.9992 0.0392 -0.
 function fluffyPath(cx, cy, w, h) {
   let i = 0;
   const WIDEN = 1.17; // v15.5: fluffy body wider than the drawn silhouette (+17%)
-  return FLUFFY_UNIT.replace(/-?\d*\.?\d+/g, (n) => {
+  return partUnit('fluffy', FLUFFY_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
     const v = parseFloat(n);
     const out = (i++ % 2 === 0) ? cx + w * v * WIDEN : cy + h * v;
     return out.toFixed(2);
@@ -177,7 +206,7 @@ const SPIKY_UNIT = 'M -0.0497 -1 C 0.0629 -0.9901 0.1474 -0.92 0.2237 -0.8416 C 
 function spikyPath(cx, cy, w, h) {
   let i = 0;
   const cyo = cy - 6; // v15.9: height back to original (-10 from prev) + pulled up 6px
-  return SPIKY_UNIT.replace(/-?\d*\.?\d+/g, (n) => {
+  return partUnit('spiky', SPIKY_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
     const v = parseFloat(n);
     const out = (i++ % 2 === 0) ? cx + w * v : cyo + h * v;
     return out.toFixed(2);
@@ -265,7 +294,7 @@ const FANG2_ASPECT = 2.3416;
 // preserved, sat a touch lower.
 function fangMouth(x, y, w, pal) {
   const SX = w * 0.8;            // half rendered width (target ~1.6w)
-  const SY = SX / FANG2_ASPECT;  // preserve aspect
+  const SY = SX / partAspect('fangMouth', FANG2_ASPECT);  // preserve aspect
   const cyc = y + 6;
   const oc = pal.outline;
   const map = (unit) => {
@@ -276,7 +305,7 @@ function fangMouth(x, y, w, pal) {
       return out.toFixed(2);
     });
   };
-  return `<path d="${map(FANG2_MOUTH)}" fill="${oc}"/>` +
+  return `<path d="${map(partUnit('fangMouth', FANG2_MOUTH))}" fill="${oc}"/>` +
     `<path d="${map(FANG2_TOOTH)}" fill="#ffffff" stroke="${oc}" stroke-width="${(w * 0.05).toFixed(2)}" stroke-linejoin="round"/>`;
 }
 
@@ -287,7 +316,7 @@ const OPEN_ASPECT = 1.2148;
 // pet outline; the inner blob -> blush (tongue). Scaled to the mouth width.
 function openMouth(x, y, w, pal) {
   const SX = w * 0.4; // v15.9: 20% smaller (was 0.5)
-  const SY = SX / OPEN_ASPECT;
+  const SY = SX / partAspect('openMouth', OPEN_ASPECT);
   const cyc = y + SY * 0.55 + 4; // v15.9: 4px lower
   const oc = pal.outline;
   const map = (unit) => {
@@ -298,7 +327,7 @@ function openMouth(x, y, w, pal) {
       return out.toFixed(2);
     });
   };
-  return `<path d="${map(OPEN_MOUTH)}" fill="${pal.eye}" stroke="${oc}" stroke-width="2" stroke-linejoin="round"/>` +
+  return `<path d="${map(partUnit('openMouth', OPEN_MOUTH))}" fill="${pal.eye}" stroke="${oc}" stroke-width="2" stroke-linejoin="round"/>` +
     `<path d="${map(OPEN_TONGUE)}" fill="${pal.blush}"/>`;
 }
 
@@ -361,7 +390,7 @@ function ears(style, L, pal) {
         const mxc = mx - flip * 5; // v15.9: ears 10px closer together (5px/side)
         const Hr = w * 0.85;
         const SY = Hr / 2;
-        const SX = SY * EAR_ASPECT;
+        const SX = SY * partAspect('earOuter', EAR_ASPECT);
         const mapEar = (unit) => {
           let i = 0;
           return unit.replace(/-?\d*\.?\d+/g, (n) => {
@@ -373,7 +402,7 @@ function ears(style, L, pal) {
         // v15.9: rotate the top 30° OUTWARD around the ear's base.
         const rot = flip * 30;
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
-          `<path d="${mapEar(EAR_OUTER)}" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="${mapEar(partUnit('earOuter', EAR_OUTER))}" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
           `<path d="${mapEar(EAR_INNER)}" fill="${inner}"/></g>`;
       }
       case 'bunny': {
@@ -423,12 +452,12 @@ function horns(style, L, pal) {
       // in the pet's horn/outline colors — tips up, bases into the head.
       const Hr = w * 1.05;
       const SY = Hr / 2;
-      const SX = SY * DEVIL_ASPECT;
+      const SX = SY * partAspect('devil', DEVIL_ASPECT);
       const ay = topY + 30; // v15.9: another 10px lower
       const dxh = w * 0.5;
       const oneHorn = (ax, flipX) => {
         let i = 0;
-        const d = DEVIL_UNIT.replace(/-?\d*\.?\d+/g, (n) => {
+        const d = partUnit('devil', DEVIL_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
           const v = parseFloat(n);
           const out = (i++ % 2 === 0) ? (ax + v * SX * flipX) : (ay + (v - 1) * SY);
           return out.toFixed(2);
