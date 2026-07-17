@@ -1253,18 +1253,19 @@ export function doTrain(name) {
     save();
     return;
   }
-  // v0.15: per-exercise STRIKE roll — the chance escalates with consecutive reps
-  // of the SAME exercise (10/20/50/70/90%), +10% for Pigro. On a strike THAT
-  // exercise locks for 5 min (scolding won't clear it); a different exercise
-  // resets the streak.
-  const consec = (pet.lastExercise === name) ? (pet.sameExCount || 0) + 1 : 1;
-  let strikeChance = STRIKE_PROBS[Math.min(consec, STRIKE_PROBS.length) - 1];
+  // v0.15: per-exercise STRIKE roll — each exercise has its OWN running streak
+  // that escalates the chance (10/20/50/70/90%), +10% for Pigro. The streak is
+  // per exercise and PERSISTS across other exercises (2 STR, 1 SPD, then STR =
+  // 3rd STR). On a strike THAT exercise locks for 5 min (scolding won't clear
+  // it) and only its own streak resets.
+  pet.exStreak = pet.exStreak || {};
+  const streak = (pet.exStreak[name] || 0) + 1;
+  let strikeChance = STRIKE_PROBS[Math.min(streak, STRIKE_PROBS.length) - 1];
   if (isPersona(pet, 'lazy')) strikeChance += LAZY_STRIKE_BONUS;
   if (Math.random() < strikeChance) {
     pet.exBlock = pet.exBlock || {};
     pet.exBlock[name] = Date.now() + TRAIN_BLOCK_MS;
-    pet.lastExercise = name;
-    pet.sameExCount = 0; // reset after serving the strike
+    pet.exStreak[name] = 0; // reset only this exercise's streak after the strike
     pet.lastMisbehaviorAt = Date.now();
     toast(t('toast.exStrike', { name: pet.name, ex: t('train.' + name.toLowerCase()), time: fmtDuration(TRAIN_BLOCK_MS) }));
     reaction('💢');
@@ -1273,8 +1274,7 @@ export function doTrain(name) {
     save();
     return;
   }
-  pet.lastExercise = name;
-  pet.sameExCount = consec;
+  pet.exStreak[name] = streak; // this exercise's running streak advances
   // pay costs (v6.1: flat 20 stamina + hunger/hygiene/weight)
   pet.stamina = clamp(pet.stamina - trainCost, 0, pet.genome.maxStamina);
   pet.care.hunger = clamp(pet.care.hunger - ex.hunger, 0, 100);
