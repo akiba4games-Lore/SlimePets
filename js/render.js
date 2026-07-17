@@ -338,6 +338,10 @@ function ears(style, L, pal) {
   return `<g class="sp-ears">${one(cx - dx, -1)}${one(cx + dx, 1)}</g>`;
 }
 
+// v15.7: player-drawn devil-horn PAIR (traced silhouettes, normalized to a unit box).
+const DEVIL_UNIT = 'M -0.6875 -1 C -0.6577 -0.9758 -0.628 -0.9516 -0.5973 -0.9266 C -0.5993 -0.896 -0.6012 -0.8654 -0.6032 -0.8338 C -0.6241 -0.4612 -0.6241 -0.4612 -0.5613 -0.1192 C -0.521 -0.0424 -0.4799 0.0225 -0.4344 0.0859 C -0.399 0.1377 -0.399 0.1377 -0.381 0.2111 C -0.3742 0.3782 -0.3721 0.4687 -0.4092 0.6194 C -0.545 0.9456 -0.545 0.9456 -0.6526 0.9841 C -0.7538 0.9808 -0.8038 0.9193 -0.8802 0.7891 C -0.9728 0.565 -1 0.3172 -0.994 0.0276 C -0.9515 -0.3907 -0.8543 -0.742 -0.6875 -1 Z M 0.6286 -1 C 0.7686 -0.9105 0.8495 -0.665 0.9171 -0.4128 C 1 -0.0514 0.9961 0.2428 0.9351 0.6148 C 0.9001 0.7729 0.8584 0.8556 0.7841 0.9451 C 0.6864 1 0.6245 0.9815 0.5362 0.8809 C 0.4846 0.7986 0.4393 0.7117 0.3943 0.6148 C 0.3883 0.6027 0.3824 0.5906 0.3762 0.5781 C 0.3749 0.5162 0.3747 0.4542 0.3751 0.3923 C 0.3753 0.3586 0.3754 0.3248 0.3756 0.2901 C 0.3758 0.264 0.376 0.238 0.3762 0.2111 C 0.3881 0.2111 0.4 0.2111 0.4123 0.2111 C 0.416 0.1907 0.4197 0.1702 0.4236 0.1492 C 0.4483 0.0643 0.4483 0.0643 0.5013 -0.0206 C 0.563 -0.1212 0.5881 -0.2201 0.6106 -0.3761 C 0.6051 -0.5128 0.6051 -0.5128 0.5926 -0.633 C 0.5985 -0.6572 0.6045 -0.6814 0.6106 -0.7064 C 0.6073 -0.7427 0.6039 -0.7791 0.6005 -0.8165 C 0.5966 -0.871 0.5966 -0.871 0.5926 -0.9266 C 0.6045 -0.9508 0.6164 -0.975 0.6286 -1 Z';
+const DEVIL_HW = 55.46525, DEVIL_HH = 27.24804;
+
 // ---------------------------------------------------------------------------
 // Horns.
 // ---------------------------------------------------------------------------
@@ -357,18 +361,19 @@ function horns(style, L, pal) {
         `<path d="M ${cx + 16} ${topY - 23} l 10.5 67 l -21 0 Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`
       );
     case 'devil': {
-      // v15.2: bull/devil horns — base flares OUTWARD from the sides, then the
-      // horn curves up and the TIP hooks back toward the CENTER. Base runs down
-      // behind the body so it anchors into the head.
-      const horn = (mx, flip) =>
-        `<path d="M ${mx} ${topY + 56} ` +
-        `L ${mx} ${topY + 14} ` +
-        `q ${flip * 16} ${-6} ${flip * 26} ${-24} ` +  // flare outward + up
-        `q ${flip * 6} ${-12} ${flip * -6} ${-20} ` +   // tip hooks back toward center
-        `q ${flip * -2} ${12} ${flip * -14} ${18} ` +   // inner edge back down
-        `q ${flip * -8} ${10} ${flip * -16} ${12} ` +
-        `L ${mx} ${topY + 54} Z" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
-      return horn(cx - 24, -1) + horn(cx + 24, 1);
+      // v15.7: player-drawn devil horns (traced pair). Colored with the pet's
+      // horn/outline colors, scaled onto the head with aspect preserved. Bases
+      // run a little into the head (hidden behind the body).
+      const SX = L.w * 0.95;
+      const SY = SX * (DEVIL_HH / DEVIL_HW);
+      const baseY = topY + 8 - SY;
+      let i = 0;
+      const d = DEVIL_UNIT.replace(/-?\d*\.?\d+/g, (n) => {
+        const v = parseFloat(n);
+        const out = (i++ % 2 === 0) ? cx + v * SX : baseY + v * SY;
+        return out.toFixed(2);
+      });
+      return `<path d="${d}" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
     }
     case 'antlers': { // v15: legacy (no longer generated) — kept so old saves still draw.
       const branch = (mx, flip) =>
