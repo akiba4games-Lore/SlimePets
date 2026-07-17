@@ -146,12 +146,12 @@ const LAZY_TRAIN_DROP = 0.005;   // laziness lost per completed training
 // cost (coins) / hunger / hp / stamina / weight / happy.
 // Display names are localized via t('food.<key>'); `key` is the i18n suffix.
 const FOODS = {
-  milk: { emoji: '🍼', cost: 5, hunger: 18, hp: 3, stamina: 4, weight: 0, happy: 0, sweet: false },
-  apple: { emoji: '🍎', cost: 5, hunger: 10, hp: 2, stamina: 3, weight: -1, happy: 0, sweet: false },
-  bread: { emoji: '🍞', cost: 12, hunger: 18, hp: 3, stamina: 5, weight: 3, happy: 0, sweet: false },
-  icecream: { emoji: '🍦', cost: 12, hunger: 8, hp: 2, stamina: 3, weight: 3, happy: 8, sweet: true },
-  cake: { emoji: '🍰', cost: 15, hunger: 10, hp: 3, stamina: 4, weight: 4, happy: 12, sweet: true },
-  meat: { emoji: '🍖', cost: 20, hunger: 22, hp: 6, stamina: 8, weight: 1, happy: 0, sweet: false },
+  milk: { emoji: '🍼', cost: 5, hunger: 18, hp: 3, stamina: 4, weight: 0.2, happy: 0, sweet: false },
+  apple: { emoji: '🍎', cost: 5, hunger: 10, hp: 2, stamina: 3, weight: 0.1, happy: 0, sweet: false },
+  bread: { emoji: '🍞', cost: 12, hunger: 18, hp: 3, stamina: 5, weight: 0.4, happy: 0, sweet: false },
+  icecream: { emoji: '🍦', cost: 12, hunger: 8, hp: 2, stamina: 3, weight: 0.8, happy: 8, sweet: true },
+  cake: { emoji: '🍰', cost: 15, hunger: 10, hp: 3, stamina: 4, weight: 1.2, happy: 12, sweet: true },
+  meat: { emoji: '🍖', cost: 20, hunger: 22, hp: 6, stamina: 8, weight: 0.5, happy: 0, sweet: false },
 };
 const FOODS_BABY = ['milk', 'apple', 'icecream'];
 const FOODS_CHILD = ['apple', 'bread', 'icecream', 'cake', 'meat'];
@@ -246,6 +246,9 @@ function personalityHappyDecayMult(pet) {
   return 1;
 }
 
+// v0.15 — a pet won't train or battle while sick or too unhappy (below this
+// happiness). Tunable.
+const MIN_HAPPY_TO_ACT = 40;
 // v6.1 — training now costs a flat 20 stamina per session (all exercises).
 const TRAIN_STAMINA_COST = 20;
 // v10 — Special training (🌟) costs 100 stamina and teaches a random move.
@@ -608,8 +611,12 @@ function applyDecay(pet, dtSec) {
   const maxHp = computeStats(pet).hp;
   if (typeof pet.hpCurrent !== 'number' || !isFinite(pet.hpCurrent)) pet.hpCurrent = maxHp;
   const wounded = pet.hpCurrent < maxHp * 0.5; // <50% HP => happiness suffers faster
-  // Starvation (§6): only after the egg has hatched and 2h since the last feed.
-  const starving = pet.stage !== 'egg' && Date.now() - (pet.lastFedAt || 0) > STARVE_GRACE_MS;
+  // v0.15: a SLEEPING pet is safe — it never starves or falls sick overnight.
+  // We pause the starvation clock by carrying lastFedAt forward while asleep, and
+  // skip illness onset below. (Hunger still eases down slowly via DECAY_SLEEP.)
+  if (pet.sleeping && pet.lastFedAt) pet.lastFedAt += dtSec * 1000;
+  // Starvation (§6): only after the egg has hatched, awake, and 2h since last feed.
+  const starving = pet.stage !== 'egg' && !pet.sleeping && Date.now() - (pet.lastFedAt || 0) > STARVE_GRACE_MS;
   // A poop on the floor makes hygiene decay 3× faster; v14B: Disordinato adds 1.4×.
   const hygMult = (pet.poopInRoom ? 3 : 1) * (isPersona(pet, 'messy') ? MESSY_HYGIENE_MULT : 1);
   // v5 (§4): a dirty pet (hygiene < 35) loses happiness ~1.6× faster.
@@ -662,7 +669,7 @@ function applyDecay(pet, dtSec) {
   // v7/v14A (§5): illness onset. Only while hatched & not already sick: a
   // sustained sad OR hungry state fills illTimer; prolonged starvation (past the
   // 2h grace) goes straight to sick. A healthy state drains illTimer.
-  if (pet.stage !== 'egg' && !pet.sick) {
+  if (pet.stage !== 'egg' && !pet.sick && !pet.sleeping) {
     if (starving) {
       makeSick(pet); // 2h grace elapsed → sick (no HP-drain-to-death anymore)
     } else {
@@ -997,7 +1004,9 @@ export function doScold() {
   scoldSadPose = true;
   const poopValid = pet.poopInRoom && !pet.poopScolded;
   const misValid = pet.lastMisbehaviorAt > 0 && now - pet.lastMisbehaviorAt <= MISBEHAVIOR_WINDOW_MS;
-  const strikeValid = (pet.trainBlockUntil || 0) > now; // scolding ends a training strike
+  // v0.15: a per-exercise strike also counts as a valid scold target.
+  const exStrikeValid = !!(pet.exBlock && Object.keys(pet.exBlock).some(k => (pet.exBlock[k] || 0) > now));
+  const strikeValid = ((pet.trainBlockUntil || 0) > now) || exStrikeValid; // scolding ends a training strike
   if (poopValid || misValid || strikeValid) {
     pet.scoldCount = (pet.scoldCount || 0) + 1; // valid scold (feeds 'scold' unlocks)
     pet.education = clamp(pet.education + 8, 0, 100);
@@ -1005,7 +1014,7 @@ export function doScold() {
     c.happiness = clamp(c.happiness - 3, 0, 100);
     if (poopValid) pet.poopScolded = true;
     if (misValid) pet.lastMisbehaviorAt = 0;
-    if (strikeValid) { pet.trainBlockUntil = 0; refreshTrain(); } // training available again
+    if (strikeValid) { pet.trainBlockUntil = 0; pet.exBlock = {}; pet.sameExCount = 0; refreshTrain(); } // training available again
     reaction('📢');
     toast(t('toast.scoldLearn', { name: pet.name }));
     checkLearning(); // education may have crossed a milestone
@@ -1176,10 +1185,22 @@ export function doTrain(name) {
     toast(t('toast.asleep', { name: pet.name }));
     return;
   }
+  // v0.15: a sick or too-unhappy pet won't train.
+  if (pet.sick) { toast(t('toast.tooSick', { name: pet.name })); return; }
+  if (pet.care.happiness < MIN_HAPPY_TO_ACT) { toast(t('toast.tooSad', { name: pet.name })); return; }
   // v5.1: while on strike (after a refusal) ALL training is locked for 5 minutes.
   if (Date.now() < (pet.trainBlockUntil || 0)) {
     toast(t('toast.trainBlocked', { name: pet.name, time: fmtDuration(pet.trainBlockUntil - Date.now()) }));
     return;
+  }
+  // v0.15: per-exercise strike — a specific basic exercise can be locked out
+  // (from doing it 3× in a row). Special is exempt.
+  if (!isSpecial) {
+    const exUntil = (pet.exBlock && pet.exBlock[name]) || 0;
+    if (Date.now() < exUntil) {
+      toast(t('toast.exStrike', { name: pet.name, ex: t('train.' + name.toLowerCase()), time: fmtDuration(exUntil - Date.now()) }));
+      return;
+    }
   }
   // Basics cost a flat 20 stamina up front. Special REQUIRES a full bar (it then
   // drains all of it) and is also limited to once per day (checked above).
@@ -1242,16 +1263,30 @@ export function doTrain(name) {
     save();
     return;
   }
+  // v0.15: repeating the SAME basic exercise 3× in a row puts THAT exercise on
+  // strike (locked out for a while) instead of running — encourages variety.
+  const consec = (pet.lastExercise === name) ? (pet.sameExCount || 0) + 1 : 1;
+  if (consec >= 3) {
+    pet.exBlock = pet.exBlock || {};
+    pet.exBlock[name] = Date.now() + TRAIN_BLOCK_MS;
+    pet.sameExCount = 0;
+    pet.lastExercise = name;
+    toast(t('toast.exStrike', { name: pet.name, ex: t('train.' + name.toLowerCase()), time: fmtDuration(TRAIN_BLOCK_MS) }));
+    reaction('💢');
+    refreshTrain();
+    save();
+    return;
+  }
+  pet.lastExercise = name;
+  pet.sameExCount = consec;
   // pay costs (v6.1: flat 20 stamina + hunger/hygiene/weight)
   pet.stamina = clamp(pet.stamina - TRAIN_STAMINA_COST, 0, pet.genome.maxStamina);
   pet.care.hunger = clamp(pet.care.hunger - ex.hunger, 0, 100);
   pet.care.hygiene = clamp(pet.care.hygiene - ex.hygiene - TRAIN_HYGIENE_HIT, 0, 100);
   // Working out burns a little weight (running burns the most).
   pet.weight = clamp(pet.weight - (name === 'Run' ? 2.5 : 1.5), 0, 100);
-  // gain = base * affinity * diminishing(current training)
-  const cur = pet.training[ex.stat] || 0;
-  const dim = 1 / (1 + cur * 0.05);
-  const gain = ex.base * pet.genome.affinity[ex.stat] * dim;
+  // v0.15: gain = base * affinity (no per-stat diminishing returns anymore).
+  const gain = ex.base * pet.genome.affinity[ex.stat];
   addTraining(pet, ex.stat, gain);
   const leveled = grantXp(pet, 6);
   pet.trainingsDone = (pet.trainingsDone || 0) + 1; // feeds 'trainings' unlocks
@@ -2074,6 +2109,9 @@ function battleChargeRemaining(pet) {
 function consumeBattleCharge(kind) {
   const pet = state.pet;
   if (!pet) return true;
+  // v0.15: a sick or too-unhappy pet won't fight (any battle kind).
+  if (pet.sick) { toast(t('toast.tooSick', { name: pet.name })); return false; }
+  if (pet.care && pet.care.happiness < MIN_HAPPY_TO_ACT) { toast(t('toast.tooSad', { name: pet.name })); return false; }
   if (kind === 'pvp') return true; // local QR PvP is free
   refreshBattleCharges(pet);
   if ((pet.battleCharges || 0) <= 0) {
