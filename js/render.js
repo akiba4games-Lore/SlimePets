@@ -396,10 +396,15 @@ const EAR_OUTER = 'M -0.7872 -0.9954 C -0.6371 -1 -0.5101 -0.9884 -0.3665 -0.949
 const EAR_INNER = 'M -0.5477 -0.7721 C -0.2519 -0.6604 -0.0779 -0.429 0.0465 -0.1883 C 0.0641 -0.1471 0.0641 -0.1471 0.0641 -0.1025 C 0.0203 -0.0951 -0.0236 -0.0877 -0.0689 -0.0801 C -0.0425 -0.0668 -0.0162 -0.0534 0.0109 -0.0397 C 0.0373 -0.0236 0.0636 -0.0074 0.0908 0.0092 C 0.0908 0.0313 0.0908 0.0534 0.0908 0.0761 C -0.1335 0.1048 -0.1335 0.1048 -0.2551 0.0761 C -0.2288 0.113 -0.2024 0.1498 -0.1753 0.1877 C -0.2411 0.1988 -0.2411 0.1988 -0.3083 0.2101 C -0.3083 0.2322 -0.3083 0.2543 -0.3083 0.277 C -0.361 0.2881 -0.361 0.2881 -0.4147 0.2994 C -0.4147 0.3215 -0.4147 0.3436 -0.4147 0.3663 C -0.4411 0.3663 -0.4674 0.3663 -0.4945 0.3663 C -0.6128 0.2063 -0.6229 0.0602 -0.6275 -0.1248 C -0.6282 -0.1436 -0.6289 -0.1625 -0.6296 -0.1819 C -0.6317 -0.2438 -0.6331 -0.3057 -0.6342 -0.3675 C -0.6348 -0.3872 -0.6353 -0.4068 -0.6359 -0.427 C -0.6367 -0.5575 -0.6105 -0.6526 -0.5477 -0.7721 Z';
 const EAR_ASPECT = 0.8391;
 
-// v16: player-drawn ROUND ear (traced, normalized). Outer + inner, drawn once
-// per side (mirrored) in the round case.
-const ROUND_OUTER = 'M -0.4762 -0.9939 C -0.1971 -1.0869 0.0123 -0.9818 0.0575 -0.901 C 0.09 -0.8705 0.1698 -0.7704 0.1971 -0.7354 C 0.2041 -0.7687 0.2504 -0.6707 0.2792 -0.8606 C 0.4277 -0.6771 0.4739 -0.5535 0.5049 -0.3192 C 0.5716 -0.3835 0.6249 -0.4568 0.6281 -0.4646 C 0.6451 -0.4636 0.7348 -0.3273 0.6733 -0.1535 C 0.6821 -0.1541 0.7718 0.1212 0.4105 0.5051 C -0.0711 0.8821 -0.2116 0.7364 -0.2176 0.7394 C -0.3243 0.8081 -0.4988 0.7566 -0.5173 0.7475 C -0.3859 0.6869 -0.4213 0.6413 -0.4023 0.6061 C -0.4136 0.6068 -0.4475 0.6747 -0.6733 0.6263 C -0.6779 0.6038 -0.6021 0.5222 -0.5738 0.5036 C -0.5827 0.503 -0.5915 0.5023 -0.6006 0.5016 C -0.6834 0.4933 -0.7831 0.4461 -0.8539 0.4 C -0.8539 0.385 -0.6954 0.3516 -0.6848 0.3398 C -0.6905 0.3367 -0.91 0.1699 -0.9548 0.033 C -0.9615 0.0048 -1.0096 -0.1371 -1.014 -0.1657 C -1.0165 -0.1788 -1.0217 -0.4082 -0.8744 -0.5535 C -0.8169 -0.6384 -0.7156 -0.6837 -0.7061 -0.6909 C -0.7131 -0.6928 -0.8246 -0.7375 -0.842 -0.7432 C -0.842 -0.7552 -0.6425 -0.9314 -0.3818 -0.8768 C -0.4005 -0.9087 -0.4825 -0.9815 -0.4762 -0.9939 Z';
-const ROUND_INNER = 'M -0.051 -0.5483 C 0.0493 -0.4847 0.1296 -0.3646 0.1605 -0.2514 C 0.1694 -0.2028 0.1695 -0.1536 0.17 -0.1044 C 0.1701 -0.0952 0.1702 -0.086 0.1703 -0.0766 C 0.1694 -0.0055 0.1604 0.0613 0.1197 0.1214 C 0.092 0.1123 0.092 0.1123 0.0791 0.0888 C 0.0747 0.0791 0.0704 0.0694 0.066 0.0594 C 0.0436 0.013 0.0281 -0.0113 -0.019 -0.0333 C -0.02 -0.0132 -0.02 -0.0132 -0.0098 0.0122 C -0.0057 0.0612 -0.0091 0.1027 -0.0283 0.1487 C -0.061 0.1333 -0.09 0.1145 -0.1198 0.0943 C -0.1431 0.0831 -0.1599 0.0833 -0.1855 0.085 C -0.1817 0.0897 -0.1779 0.0945 -0.174 0.0994 C -0.1336 0.1536 -0.1188 0.2005 -0.1115 0.267 C -0.1435 0.276 -0.1435 0.276 -0.1762 0.2852 C -0.1692 0.2892 -0.1621 0.2931 -0.1548 0.2972 C -0.1158 0.3213 -0.1158 0.3213 -0.1022 0.3398 C -0.1062 0.3589 -0.1062 0.3589 -0.1115 0.3762 C -0.2475 0.3859 -0.3564 0.3397 -0.4604 0.2557 C -0.5665 0.164 -0.6488 0.0454 -0.6584 -0.0981 C -0.6593 -0.1213 -0.6597 -0.1444 -0.66 -0.1676 C -0.6604 -0.1792 -0.6604 -0.1792 -0.6608 -0.1912 C -0.6618 -0.2947 -0.6059 -0.3823 -0.5363 -0.4571 C -0.4088 -0.5769 -0.2146 -0.6298 -0.051 -0.5483 Z';
+// v16.9: player-drawn FLUFFY ear (was the old 'round' koala shape). Outer +
+// inner, drawn once per side (mirrored) in the fluffy case.
+const FEAR_OUTER = 'M -0.4762 -0.9939 C -0.1971 -1.0869 0.0123 -0.9818 0.0575 -0.901 C 0.09 -0.8705 0.1698 -0.7704 0.1971 -0.7354 C 0.2041 -0.7687 0.2504 -0.6707 0.2792 -0.8606 C 0.4277 -0.6771 0.4739 -0.5535 0.5049 -0.3192 C 0.5716 -0.3835 0.6249 -0.4568 0.6281 -0.4646 C 0.6451 -0.4636 0.7348 -0.3273 0.6733 -0.1535 C 0.6821 -0.1541 0.7718 0.1212 0.4105 0.5051 C -0.0711 0.8821 -0.2116 0.7364 -0.2176 0.7394 C -0.3243 0.8081 -0.4988 0.7566 -0.5173 0.7475 C -0.3859 0.6869 -0.4213 0.6413 -0.4023 0.6061 C -0.4136 0.6068 -0.4475 0.6747 -0.6733 0.6263 C -0.6779 0.6038 -0.6021 0.5222 -0.5738 0.5036 C -0.5827 0.503 -0.5915 0.5023 -0.6006 0.5016 C -0.6834 0.4933 -0.7831 0.4461 -0.8539 0.4 C -0.8539 0.385 -0.6954 0.3516 -0.6848 0.3398 C -0.6905 0.3367 -0.91 0.1699 -0.9548 0.033 C -0.9615 0.0048 -1.0096 -0.1371 -1.014 -0.1657 C -1.0165 -0.1788 -1.0217 -0.4082 -0.8744 -0.5535 C -0.8169 -0.6384 -0.7156 -0.6837 -0.7061 -0.6909 C -0.7131 -0.6928 -0.8246 -0.7375 -0.842 -0.7432 C -0.842 -0.7552 -0.6425 -0.9314 -0.3818 -0.8768 C -0.4005 -0.9087 -0.4825 -0.9815 -0.4762 -0.9939 Z';
+const FEAR_INNER = 'M -0.051 -0.5483 C 0.0493 -0.4847 0.1296 -0.3646 0.1605 -0.2514 C 0.1694 -0.2028 0.1695 -0.1536 0.17 -0.1044 C 0.1701 -0.0952 0.1702 -0.086 0.1703 -0.0766 C 0.1694 -0.0055 0.1604 0.0613 0.1197 0.1214 C 0.092 0.1123 0.092 0.1123 0.0791 0.0888 C 0.0747 0.0791 0.0704 0.0694 0.066 0.0594 C 0.0436 0.013 0.0281 -0.0113 -0.019 -0.0333 C -0.02 -0.0132 -0.02 -0.0132 -0.0098 0.0122 C -0.0057 0.0612 -0.0091 0.1027 -0.0283 0.1487 C -0.061 0.1333 -0.09 0.1145 -0.1198 0.0943 C -0.1431 0.0831 -0.1599 0.0833 -0.1855 0.085 C -0.1817 0.0897 -0.1779 0.0945 -0.174 0.0994 C -0.1336 0.1536 -0.1188 0.2005 -0.1115 0.267 C -0.1435 0.276 -0.1435 0.276 -0.1762 0.2852 C -0.1692 0.2892 -0.1621 0.2931 -0.1548 0.2972 C -0.1158 0.3213 -0.1158 0.3213 -0.1022 0.3398 C -0.1062 0.3589 -0.1062 0.3589 -0.1115 0.3762 C -0.2475 0.3859 -0.3564 0.3397 -0.4604 0.2557 C -0.5665 0.164 -0.6488 0.0454 -0.6584 -0.0981 C -0.6593 -0.1213 -0.6597 -0.1444 -0.66 -0.1676 C -0.6604 -0.1792 -0.6604 -0.1792 -0.6608 -0.1912 C -0.6618 -0.2947 -0.6059 -0.3823 -0.5363 -0.4571 C -0.4088 -0.5769 -0.2146 -0.6298 -0.051 -0.5483 Z';
+const FEAR_ASPECT = 0.9842;
+
+// v16.9: player-drawn ROUND ear (new shape). Single outer; a concentric copy
+// forms the inner. Drawn once per side (mirrored).
+const ROUND_OUTER = 'M 0.1355 0.5091 C -0.2751 0.6707 -0.5542 0.6222 -0.8621 0.3111 C -1.0715 0.0444 -1.1331 -0.4404 -0.7061 -0.7838 C -0.2176 -1.1071 -0.4844 -0.8808 -0.3982 -0.8808 C -0.2176 -0.9414 -0.0575 -1.0061 0.0287 -1.0061 C 0.1149 -1.0061 -0.1437 -0.8566 -0.0287 -0.8606 C 0.1108 -0.8444 0.2381 -0.897 0.5542 -0.5737 C 0.4434 -0.5818 0.4885 -0.5616 0.4557 -0.4889 C 0.4967 -0.4202 0.5542 -0.3152 0.5747 -0.1455 C 0.5583 0.0606 0.5419 0.2828 0.1355 0.5091 Z';
 const ROUND_ASPECT = 0.9842;
 
 // v16.2: player-drawn BUNNY ear (traced from a Potrace SVG, normalized). Outer
@@ -473,13 +478,37 @@ function ears(style, L, pal) {
       case 'floppy':
         return `<path d="M ${mx} ${topY + 8} q ${flip * 26} ${-4} ${flip * 30} ${28} q ${flip * -14} ${8} ${flip * -26} ${-6} Z" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
       case 'round': {
-        // v16: player-drawn round ear (traced). Outer -> pet body+outline,
-        // inner -> blush. Drawn once per side (mirrored).
-        const ay = topY + 20;
-        const mxc = mx - flip * 8; // v16.3: 10px inward (was +flip*2)
-        const Hr = w * 0.75;
+        // v16.9: player-drawn round ear (new shape). Outer + a concentric copy
+        // (scaled) as the inner. Drawn once per side (mirrored).
+        const ay = topY + 12;
+        const mxc = mx + flip * 4;
+        const Hr = w * 0.8;
         const SY = Hr / 2;
         const SX = SY * partAspect('roundOuter', ROUND_ASPECT);
+        const cyp = ay - SY; // shape center
+        const mapEar = (unit, s) => {
+          let i = 0;
+          return unit.replace(/-?\d*\.?\d+/g, (n) => {
+            const v = parseFloat(n);
+            const out = (i++ % 2 === 0) ? (mxc + v * SX * flip * s) : (cyp + v * SY * s);
+            return out.toFixed(2);
+          });
+        };
+        const eFill = partColor('roundOuter', 'fill', pal, 'body');
+        const eStroke = partColor('roundOuter', 'stroke', pal, 'outline');
+        const eInner = partColor('roundOuter', 'inner', pal, 'blush');
+        const shape = partUnit('roundOuter', ROUND_OUTER);
+        return `<path d="${mapEar(shape, 1)}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="${mapEar(shape, 0.55)}" fill="${eInner}"/>`;
+      }
+      case 'fluffy': {
+        // v16.9: player-drawn fluffy ear (was the old 'round' koala shape).
+        // Outer -> pet body+outline, inner -> blush. Tips rotated 90° outward.
+        const ay = topY + 20;
+        const mxc = mx - flip * 8;
+        const Hr = w * 0.75;
+        const SY = Hr / 2;
+        const SX = SY * partAspect('fluffyEar', FEAR_ASPECT);
         const mapEar = (unit) => {
           let i = 0;
           return unit.replace(/-?\d*\.?\d+/g, (n) => {
@@ -488,14 +517,13 @@ function ears(style, L, pal) {
             return out.toFixed(2);
           });
         };
-        const eFill = partColor('roundOuter', 'fill', pal, 'body');
-        const eStroke = partColor('roundOuter', 'stroke', pal, 'outline');
-        const eInner = partColor('roundOuter', 'inner', pal, 'blush');
-        // v16.2: rotate the tip 90° OUTWARD around the ear's base.
+        const eFill = partColor('fluffyEar', 'fill', pal, 'body');
+        const eStroke = partColor('fluffyEar', 'stroke', pal, 'outline');
+        const eInner = partColor('fluffyEar', 'inner', pal, 'blush');
         const rot = flip * 90;
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
-          `<path d="${mapEar(partUnit('roundOuter', ROUND_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="${mapEar(ROUND_INNER)}" fill="${eInner}"/></g>`;
+          `<path d="${mapEar(partUnit('fluffyEar', FEAR_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="${mapEar(FEAR_INNER)}" fill="${eInner}"/></g>`;
       }
       default:
         return '';
@@ -859,6 +887,7 @@ export const BUILTIN_PART_UNITS = {
   devil: DEVIL_UNIT,
   earOuter: EAR_OUTER,
   roundOuter: ROUND_OUTER,
+  fluffyEar: FEAR_OUTER,
   bunnyOuter: BUNNY_OUTER,
   fangMouth: FANG2_MOUTH,
   openMouth: OPEN_MOUTH,
@@ -869,6 +898,7 @@ export const BUILTIN_PART_ASPECTS = {
   devil: DEVIL_ASPECT,
   earOuter: EAR_ASPECT,
   roundOuter: ROUND_ASPECT,
+  fluffyEar: FEAR_ASPECT,
   bunnyOuter: BUNNY_ASPECT,
   fangMouth: FANG2_ASPECT,
   openMouth: OPEN_ASPECT,

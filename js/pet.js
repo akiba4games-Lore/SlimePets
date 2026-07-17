@@ -32,7 +32,7 @@ export function randomSeed() {
 export const BODY_SHAPES = ['blob', 'drop', 'square', 'spiky', 'mochi', 'fluffy'];
 export const EYE_STYLES = ['round', 'sleepy', 'oval', 'manga', 'dot', 'blank', 'cat'];
 export const MOUTH_STYLES = ['smile', 'cat', 'open', 'w', 'fang'];
-export const EAR_STYLES = ['none', 'cat', 'bunny', 'round'];
+export const EAR_STYLES = ['none', 'cat', 'bunny', 'round', 'fluffy'];
 export const HORN_STYLES = ['none', 'single', 'double', 'devil'];
 export const NOSE_STYLES = ['none', 'dot', 'triangle'];
 export const TAIL_STYLES = ['none', 'nub', 'curl', 'fox'];
