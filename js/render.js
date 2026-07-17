@@ -255,6 +255,30 @@ function starPath(cx, cy, r, fill) {
   return `<path d="M ${pts.join(' L ')} Z" fill="${fill}"/>`;
 }
 
+const FANG2_MOUTH = 'M 0.9573 -1 C 0.9759 -0.9952 0.9759 -0.9952 0.9949 -0.9903 C 1 -0.8683 1 -0.8683 0.9949 -0.7224 C 0.9753 -0.6811 0.9753 -0.6811 0.9552 -0.6389 C 0.8987 -0.4939 0.8969 -0.3789 0.8886 -0.1889 C 0.8637 0.2581 0.8269 0.6739 0.6843 1 C 0.6172 0.978 0.5709 0.889 0.5188 0.7943 C 0.5095 0.7776 0.5001 0.7609 0.4905 0.7437 C 0.4092 0.5941 0.3468 0.4257 0.284 0.2329 C 0.2442 0.1433 0.2442 0.1433 0.1863 0.165 C 0.175 0.1701 0.1637 0.1753 0.1521 0.1806 C 0.0679 0.2136 -0.0182 0.2049 -0.1033 0.2058 C -0.122 0.2066 -0.1407 0.2074 -0.1599 0.2082 C -0.3616 0.2103 -0.5331 0.1149 -0.7112 -0.1052 C -0.7249 -0.1213 -0.7385 -0.1374 -0.7526 -0.1541 C -0.9652 -0.4096 -0.9652 -0.4096 -0.9993 -0.5693 C -0.9999 -0.6458 -1 -0.7224 -0.9993 -0.7989 C -0.9723 -0.8115 -0.9453 -0.8242 -0.9176 -0.8372 C -0.9098 -0.804 -0.9021 -0.7709 -0.8941 -0.7367 C -0.8186 -0.4773 -0.692 -0.3578 -0.5733 -0.2344 C -0.5625 -0.2231 -0.5517 -0.2119 -0.5406 -0.2003 C -0.205 0.1361 0.203 0.0021 0.5393 -0.275 C 0.6882 -0.4221 0.7974 -0.6053 0.8859 -0.9243 C 0.9132 -0.9903 0.9132 -0.9903 0.9573 -1 Z';
+const FANG2_TOOTH = 'M 0.7824 -0.3779 C 0.7932 -0.3779 0.804 -0.3779 0.8151 -0.3779 C 0.8119 0.0296 0.7827 0.4249 0.6843 0.7704 C 0.6034 0.755 0.5603 0.6581 0.5045 0.5311 C 0.4962 0.5128 0.4879 0.4945 0.4794 0.4757 C 0.4548 0.4213 0.4306 0.3662 0.4064 0.3111 C 0.3909 0.2765 0.3754 0.242 0.3595 0.2064 C 0.3247 0.1197 0.3247 0.1197 0.3247 0.0431 C 0.3341 0.0368 0.3435 0.0304 0.3532 0.0239 C 0.3962 -0.0054 0.4391 -0.0349 0.482 -0.0645 C 0.4968 -0.0745 0.5116 -0.0845 0.5268 -0.0948 C 0.6057 -0.1494 0.6766 -0.2114 0.7497 -0.3013 C 0.7605 -0.3013 0.7713 -0.3013 0.7824 -0.3013 C 0.7824 -0.3266 0.7824 -0.3519 0.7824 -0.3779 Z';
+const FANG2_ASPECT = 2.3416;
+// v15.8: player-drawn (bigger) fang mouth — two traced paths sharing one
+// normalized box. The mouth shape is recolored to the pet's OUTLINE color; the
+// fang stays white with a pet-outline stroke. Scaled to the mouth width, aspect
+// preserved, sat a touch lower.
+function fangMouth(x, y, w, pal) {
+  const SX = w * 0.8;            // half rendered width (target ~1.6w)
+  const SY = SX / FANG2_ASPECT;  // preserve aspect
+  const cyc = y + 6;
+  const oc = pal.outline;
+  const map = (unit) => {
+    let i = 0;
+    return unit.replace(/-?\d*\.?\d+/g, (n) => {
+      const v = parseFloat(n);
+      const out = (i++ % 2 === 0) ? (x + v * SX) : (cyc + v * SY);
+      return out.toFixed(2);
+    });
+  };
+  return `<path d="${map(FANG2_MOUTH)}" fill="${oc}"/>` +
+    `<path d="${map(FANG2_TOOTH)}" fill="#ffffff" stroke="${oc}" stroke-width="${(w * 0.05).toFixed(2)}" stroke-linejoin="round"/>`;
+}
+
 // ---------------------------------------------------------------------------
 // Mouths (4 styles).
 // ---------------------------------------------------------------------------
@@ -280,18 +304,9 @@ function mouth(style, x, y, w, pal, mood) {
       // v15: squashed to HALF its former height (control offsets 0.5->0.25,
       // dip 0.08->0.04) so it reads distinct from 'cat'. Same width.
       return `<path d="M ${x - w * 0.5} ${y} Q ${x - w * 0.25} ${y + w * 0.25} ${x} ${y + w * 0.04} Q ${x + w * 0.25} ${y + w * 0.25} ${x + w * 0.5} ${y}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
-    case 'fang': {
-      // v15.7: procedural fang. The mouth LINE and the tooth OUTLINE use the
-      // pet's outline color; sharp (pointed) white fangs. -10% size, 6px lower.
-      const oc = pal.outline;
-      const yy = y + 6;
-      const hw = w * 0.675;
-      const line = `<path d="M ${x - hw} ${yy} Q ${x - hw * 0.45} ${yy + hw * 0.5} ${x} ${yy + hw * 0.34} Q ${x + hw * 0.45} ${yy + hw * 0.5} ${x + hw} ${yy}" fill="none" stroke="${oc}" stroke-width="${(w * 0.09).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-      const fw = hw * 0.16, fh = hw * 0.62;
-      const ty = yy + hw * 0.18;
-      const fang = (fx, flip) => `<path d="M ${fx - fw} ${ty} L ${fx + fw} ${ty} L ${fx} ${ty + fh} Z" fill="#ffffff" stroke="${oc}" stroke-width="${(w * 0.045).toFixed(2)}" stroke-linejoin="round" transform="rotate(${flip * 7} ${fx} ${ty})"/>`;
-      return fang(x - hw * 0.42, -1) + fang(x + hw * 0.42, 1) + line;
-    }
+    case 'fang':
+      // v15.8: player-drawn fang mouth (traced), recolored to the pet.
+      return fangMouth(x, y, w, pal);
     case 'smile':
     default:
       return `<path d="M ${x - w * 0.42} ${y} Q ${x} ${y + w * 0.6} ${x + w * 0.42} ${y}" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`;
