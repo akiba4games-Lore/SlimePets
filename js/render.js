@@ -212,14 +212,16 @@ function eye(style, x, y, r, pal, mood) {
     case 'blank':
       // v15.2: like manga but ALL WHITE with a black outline (single circle).
       return `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.26}"/>`;
-    case 'cat':
-      // v15.3: white BASE + yellow iris (SHORTER in height) + slit pupil + highlight.
+    case 'cat': {
+      // v15.5: wide (as wide as the normal eye) + SHORT white eye with a vertical
+      // slit pupil — NO yellow. Sits a touch lower than the other eyes.
+      const cyE = y + r * 0.28; // lower
       return (
-        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.9}" ry="${r * 0.92}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.16}"/>` +
-        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.62}" ry="${r * 0.82}" fill="#ffd24a"/>` +
-        `<ellipse cx="${x}" cy="${y}" rx="${r * 0.16}" ry="${r * 0.72}" fill="#1c1026"/>` +
-        `<circle cx="${x - r * 0.3}" cy="${y - r * 0.4}" r="${r * 0.16}" fill="#ffffff"/>`
+        `<ellipse cx="${x}" cy="${cyE}" rx="${r * 0.98}" ry="${r * 0.74}" fill="#ffffff" stroke="#1c1026" stroke-width="${r * 0.16}"/>` +
+        `<ellipse cx="${x}" cy="${cyE}" rx="${r * 0.2}" ry="${r * 0.56}" fill="#1c1026"/>` +
+        `<circle cx="${x - r * 0.34}" cy="${cyE - r * 0.26}" r="${r * 0.15}" fill="#ffffff"/>`
       );
+    }
     case 'star': // v15: legacy (no longer generated) — kept so old saves still draw.
       return starPath(x, y, r * 1.05, pal.eye) + `<circle cx="${x - r * 0.28}" cy="${y - r * 0.3}" r="${r * 0.26}" fill="#ffffff"/>`;
     case 'sparkle':
