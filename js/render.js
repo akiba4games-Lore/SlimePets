@@ -470,7 +470,7 @@ function ears(style, L, pal) {
         const eFill = partColor('bunnyOuter', 'fill', pal, 'body');
         const eStroke = partColor('bunnyOuter', 'stroke', pal, 'outline');
         const eInner = partColor('bunnyOuter', 'inner', pal, 'blush');
-        const rot = flip * -13; // v16.7: 30° inward from 17° (now leans inward)
+        const rot = flip * -12; // v16.11: 1° more outward (was -13)
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
           `<path d="${mapEar(partUnit('bunnyOuter', BUNNY_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
           `<path d="${mapEar(BUNNY_INNER)}" fill="${eInner}"/></g>`;
