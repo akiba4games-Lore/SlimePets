@@ -466,8 +466,11 @@ function ears(style, L, pal) {
         const eFill = partColor('roundOuter', 'fill', pal, 'body');
         const eStroke = partColor('roundOuter', 'stroke', pal, 'outline');
         const eInner = partColor('roundOuter', 'inner', pal, 'blush');
-        return `<path d="${mapEar(partUnit('roundOuter', ROUND_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="${mapEar(ROUND_INNER)}" fill="${eInner}"/>`;
+        // v16.1: rotate the tip 45° OUTWARD around the ear's base.
+        const rot = flip * 45;
+        return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
+          `<path d="${mapEar(partUnit('roundOuter', ROUND_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="${mapEar(ROUND_INNER)}" fill="${eInner}"/></g>`;
       }
       default:
         return '';
