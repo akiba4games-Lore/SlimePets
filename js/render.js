@@ -26,7 +26,7 @@ function palette(g) {
   const S = typeof g.sat === 'number' && isFinite(g.sat) ? g.sat : 70;
   const L = typeof g.light === 'number' && isFinite(g.light) ? g.light : 80;
   const cl = (v) => Math.max(0, Math.min(100, v));
-  return {
+  const pal = {
     body: hsl(g.hue, S, L),
     bodyDark: hsl(g.hue, cl(S - 8), cl(L - 12)),
     outline: hsl(g.hue, cl(S - 20), cl(L - 35)),
@@ -38,6 +38,23 @@ function palette(g) {
     horn: hsl((g.hue2 + 20) % 360, 45, 88),
     eye: hsl(g.hue, 45, 22),
   };
+  // v15.11: optional palette override from the editor (per-role hex colors).
+  try {
+    const o = typeof window !== 'undefined' && window.SLIME_PALETTE_OVERRIDE;
+    if (o) for (const k in o) { if (o[k]) pal[k] = o[k]; }
+  } catch (_) { /* no window */ }
+  return pal;
+}
+// v15.11: per-part color-role mapping. The editor can say "this slot of this
+// part should use pal.<role>" (e.g. horn fill -> pal.body). Falls back to a
+// default role, or a literal color if the default isn't a palette role.
+function partColor(key, slot, pal, fallback) {
+  try {
+    const m = typeof window !== 'undefined' && window.SLIME_PART_COLOR_ROLES;
+    const role = m && m[key] && m[key][slot];
+    if (role && pal[role]) return pal[role];
+  } catch (_) { /* no window */ }
+  return pal[fallback] || fallback;
 }
 
 // Subtle pastel element tint (a soft aura clipped to the body). 'none' = no tint.
@@ -183,6 +200,10 @@ try {
     if (saved) window.SLIME_PART_OVERRIDES = Object.assign({}, window.SLIME_PART_OVERRIDES, JSON.parse(saved));
     const savedA = localStorage.getItem('slime_part_aspects');
     if (savedA) window.SLIME_PART_ASPECTS = Object.assign({}, window.SLIME_PART_ASPECTS, JSON.parse(savedA));
+    const savedP = localStorage.getItem('slime_palette_override');
+    if (savedP) window.SLIME_PALETTE_OVERRIDE = Object.assign({}, window.SLIME_PALETTE_OVERRIDE, JSON.parse(savedP));
+    const savedR = localStorage.getItem('slime_part_color_roles');
+    if (savedR) window.SLIME_PART_COLOR_ROLES = Object.assign({}, window.SLIME_PART_COLOR_ROLES, JSON.parse(savedR));
   }
 } catch (_) { /* ignore */ }
 
@@ -296,7 +317,9 @@ function fangMouth(x, y, w, pal) {
   const SX = w * 0.8;            // half rendered width (target ~1.6w)
   const SY = SX / partAspect('fangMouth', FANG2_ASPECT);  // preserve aspect
   const cyc = y + 6;
-  const oc = pal.outline;
+  const lineC = partColor('fangMouth', 'line', pal, 'outline');
+  const toothFill = partColor('fangMouth', 'toothFill', pal, '#ffffff');
+  const toothOC = partColor('fangMouth', 'toothOutline', pal, 'outline');
   const map = (unit) => {
     let i = 0;
     return unit.replace(/-?\d*\.?\d+/g, (n) => {
@@ -305,8 +328,8 @@ function fangMouth(x, y, w, pal) {
       return out.toFixed(2);
     });
   };
-  return `<path d="${map(partUnit('fangMouth', FANG2_MOUTH))}" fill="${oc}"/>` +
-    `<path d="${map(FANG2_TOOTH)}" fill="#ffffff" stroke="${oc}" stroke-width="${(w * 0.05).toFixed(2)}" stroke-linejoin="round"/>`;
+  return `<path d="${map(partUnit('fangMouth', FANG2_MOUTH))}" fill="${lineC}"/>` +
+    `<path d="${map(FANG2_TOOTH)}" fill="${toothFill}" stroke="${toothOC}" stroke-width="${(w * 0.05).toFixed(2)}" stroke-linejoin="round"/>`;
 }
 
 const OPEN_MOUTH = 'M 1 -0.9684 C 0.9937 -0.9107 0.9937 -0.9107 0.9747 -0.8454 C 0.9093 -0.7925 0.8772 -0.7839 0.7975 -0.7839 C 0.7972 -0.7641 0.797 -0.7443 0.7968 -0.7239 C 0.7798 0.4062 0.7798 0.4062 0.4678 0.7853 C 0.2739 0.9998 0.2739 0.9998 0.1358 1 C -0.1143 0.9622 -0.2546 0.8869 -0.4158 0.6521 C -0.639 0.2706 -0.7392 -0.2907 -0.7215 -0.7531 C -0.7487 -0.7519 -0.7758 -0.7506 -0.8038 -0.7493 C -0.8901 -0.7528 -0.9293 -0.7597 -1 -0.8146 C -0.9916 -0.8654 -0.9833 -0.9161 -0.9747 -0.9684 C -0.9412 -0.9618 -0.9412 -0.9618 -0.907 -0.955 C -0.3714 -0.8608 0.2359 -0.8357 0.7656 -0.982 C 0.8521 -1 0.915 -0.9922 1 -0.9684 Z';
@@ -318,7 +341,9 @@ function openMouth(x, y, w, pal) {
   const SX = w * 0.4; // v15.9: 20% smaller (was 0.5)
   const SY = SX / partAspect('openMouth', OPEN_ASPECT);
   const cyc = y + SY * 0.55 + 4; // v15.9: 4px lower
-  const oc = pal.outline;
+  const cavityC = partColor('openMouth', 'cavity', pal, 'eye');
+  const oc = partColor('openMouth', 'outline', pal, 'outline');
+  const tongueC = partColor('openMouth', 'tongue', pal, 'blush');
   const map = (unit) => {
     let i = 0;
     return unit.replace(/-?\d*\.?\d+/g, (n) => {
@@ -327,8 +352,8 @@ function openMouth(x, y, w, pal) {
       return out.toFixed(2);
     });
   };
-  return `<path d="${map(partUnit('openMouth', OPEN_MOUTH))}" fill="${pal.eye}" stroke="${oc}" stroke-width="2" stroke-linejoin="round"/>` +
-    `<path d="${map(OPEN_TONGUE)}" fill="${pal.blush}"/>`;
+  return `<path d="${map(partUnit('openMouth', OPEN_MOUTH))}" fill="${cavityC}" stroke="${oc}" stroke-width="2" stroke-linejoin="round"/>` +
+    `<path d="${map(OPEN_TONGUE)}" fill="${tongueC}"/>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -401,9 +426,12 @@ function ears(style, L, pal) {
         };
         // v15.9: rotate the top 30° OUTWARD around the ear's base.
         const rot = flip * 30;
+        const eFill = partColor('earOuter', 'fill', pal, 'body');
+        const eStroke = partColor('earOuter', 'stroke', pal, 'outline');
+        const eInner = partColor('earOuter', 'inner', pal, 'blush');
         return `<g transform="rotate(${rot} ${mxc.toFixed(2)} ${ay.toFixed(2)})">` +
-          `<path d="${mapEar(partUnit('earOuter', EAR_OUTER))}" fill="${fill}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>` +
-          `<path d="${mapEar(EAR_INNER)}" fill="${inner}"/></g>`;
+          `<path d="${mapEar(partUnit('earOuter', EAR_OUTER))}" fill="${eFill}" stroke="${eStroke}" stroke-width="2" stroke-linejoin="round"/>` +
+          `<path d="${mapEar(EAR_INNER)}" fill="${eInner}"/></g>`;
       }
       case 'bunny': {
         // v15: 20% bigger and lowered a touch (center was topY-22).
@@ -455,6 +483,8 @@ function horns(style, L, pal) {
       const SX = SY * partAspect('devil', DEVIL_ASPECT);
       const ay = topY + 30; // v15.9: another 10px lower
       const dxh = w * 0.5;
+      const dFill = partColor('devil', 'fill', pal, 'horn');
+      const dStroke = partColor('devil', 'stroke', pal, 'accentDark');
       const oneHorn = (ax, flipX) => {
         let i = 0;
         const d = partUnit('devil', DEVIL_UNIT).replace(/-?\d*\.?\d+/g, (n) => {
@@ -462,7 +492,7 @@ function horns(style, L, pal) {
           const out = (i++ % 2 === 0) ? (ax + v * SX * flipX) : (ay + (v - 1) * SY);
           return out.toFixed(2);
         });
-        return `<path d="${d}" fill="${c}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/>`;
+        return `<path d="${d}" fill="${dFill}" stroke="${dStroke}" stroke-width="2" stroke-linejoin="round"/>`;
       };
       return oneHorn(cx - dxh, 1) + oneHorn(cx + dxh, -1);
     }
@@ -787,6 +817,8 @@ export const BUILTIN_PART_ASPECTS = {
   fangMouth: FANG2_ASPECT,
   openMouth: OPEN_ASPECT,
 };
+// The pet palette for a genome (so the editor can seed its color pickers).
+export function paletteOf(genome) { return palette(sanitizeGenome(genome)); }
 
 // ---------------------------------------------------------------------------
 // Main entry point.

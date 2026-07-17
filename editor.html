@@ -60,6 +60,11 @@
       <button id="apply" class="accent">✓ Applica al gioco</button>
       <button id="reset">🗑 Rimuovi modifica</button>
     </div>
+    <div class="lbl">Colori della parte — quale colore del pet usa</div>
+    <div id="partColors" class="row"></div>
+    <div class="lbl">Palette del pet</div>
+    <div id="palette" class="row"></div>
+    <div class="row"><button id="resetPal">↺ Palette originale</button></div>
     <div class="lbl">Path normalizzato (mandalo a Claude per renderlo definitivo)</div>
     <textarea id="out" readonly></textarea>
     <div class="row"><button id="copy">Copia path</button> <span class="note" id="copied"></span></div>
@@ -76,9 +81,29 @@ const NS='http://www.w3.org/2000/svg';
 
 window.SLIME_PART_OVERRIDES = window.SLIME_PART_OVERRIDES || {};
 window.SLIME_PART_ASPECTS = window.SLIME_PART_ASPECTS || {};
+window.SLIME_PALETTE_OVERRIDE = window.SLIME_PALETTE_OVERRIDE || {};
+window.SLIME_PART_COLOR_ROLES = window.SLIME_PART_COLOR_ROLES || {};
 // pick up any previously saved edits
 try { const o=localStorage.getItem('slime_part_overrides'); if(o) Object.assign(window.SLIME_PART_OVERRIDES, JSON.parse(o)); } catch(_){}
 try { const a=localStorage.getItem('slime_part_aspects'); if(a) Object.assign(window.SLIME_PART_ASPECTS, JSON.parse(a)); } catch(_){}
+try { const p=localStorage.getItem('slime_palette_override'); if(p) Object.assign(window.SLIME_PALETTE_OVERRIDE, JSON.parse(p)); } catch(_){}
+try { const r=localStorage.getItem('slime_part_color_roles'); if(r) Object.assign(window.SLIME_PART_COLOR_ROLES, JSON.parse(r)); } catch(_){}
+
+const ROLES = ['body','bodyDark','outline','shade','accent','accentDark','belly','blush','horn','eye'];
+const PART_SLOTS = {
+  fluffy: [], spiky: [],
+  devil: [['fill','Corno','horn'],['stroke','Bordo','accentDark']],
+  earOuter: [['fill','Orecchio','body'],['stroke','Bordo','outline'],['inner','Interno','blush']],
+  fangMouth: [['line','Bocca','outline'],['toothFill','Dente','bianco'],['toothOutline','Bordo dente','outline']],
+  openMouth: [['cavity','Cavità','eye'],['outline','Bordo','outline'],['tongue','Lingua','blush']],
+};
+const PAL_ROLES = ['body','outline','blush','eye','accent','belly','horn'];
+function hslToHex(str){
+  const m=(str||'').match(/hsl\(([\d.]+)\s+([\d.]+)%\s+([\d.]+)%/); if(!m) return '#cccccc';
+  const h=+m[1]/360, s=+m[2]/100, l=+m[3]/100;
+  const f=(n)=>{ const k=(n+h*12)%12; const a=s*Math.min(l,1-l); const c=l-a*Math.max(-1,Math.min(k-3,9-k,1)); return Math.round(255*c); };
+  return '#'+[f(0),f(8),f(4)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
 
 const PARTS = {
   fluffy:    { label:'Corpo — fluffy', genome:{ bodyShape:'fluffy' } },
@@ -130,6 +155,7 @@ function loadPart(){
   halfW = base165; halfH = base165/aspect;
   const un = parseUnit(unit);
   nodes = un.map(nd=>({ a:u2c(nd.a), in:u2c(nd.in), out:u2c(nd.out) }));
+  renderPartColors();
   redraw();
 }
 
@@ -159,6 +185,37 @@ function applyLive(){
 function renderPreview(){
   const g={ ...base, bodyShape:'blob', eyes:'round', mouth:'smile', ears:'none', horn:'none', nose:'none', tail:'none', pattern:'none', cheeks:'none', element, ...PARTS[partSel.value].genome };
   preview.innerHTML=''; renderPet(preview, g, stageSel.value, { element });
+}
+function persistColors(){
+  localStorage.setItem('slime_palette_override', JSON.stringify(window.SLIME_PALETTE_OVERRIDE));
+  localStorage.setItem('slime_part_color_roles', JSON.stringify(window.SLIME_PART_COLOR_ROLES));
+}
+function renderPartColors(){
+  const key=partSel.value; const box=document.getElementById('partColors'); box.innerHTML='';
+  const slots=PART_SLOTS[key]||[];
+  if(!slots.length){ box.innerHTML='<span class="note">Questa parte usa il colore del corpo (vedi Palette sotto).</span>'; return; }
+  const roles = window.SLIME_PART_COLOR_ROLES[key] = window.SLIME_PART_COLOR_ROLES[key] || {};
+  for(const [slot,label,def] of slots){
+    const wrap=document.createElement('label'); wrap.style.cssText='font-size:11px;font-weight:700;color:var(--ink-soft);display:flex;flex-direction:column;gap:2px';
+    const sel=document.createElement('select');
+    const o0=document.createElement('option'); o0.value=''; o0.textContent='default ('+def+')'; sel.appendChild(o0);
+    for(const r of ROLES){ const o=document.createElement('option'); o.value=r; o.textContent=r; sel.appendChild(o); }
+    sel.value = roles[slot]||'';
+    sel.onchange=()=>{ if(sel.value) roles[slot]=sel.value; else delete roles[slot]; persistColors(); renderPreview(); };
+    wrap.appendChild(document.createTextNode(label)); wrap.appendChild(sel); box.appendChild(wrap);
+  }
+}
+function renderPalette(){
+  const box=document.getElementById('palette'); box.innerHTML='';
+  const pal=R.paletteOf({ ...base, element });
+  for(const r of PAL_ROLES){
+    const wrap=document.createElement('label'); wrap.style.cssText='font-size:10px;font-weight:700;color:var(--ink-soft);display:flex;flex-direction:column;align-items:center;gap:2px';
+    const inp=document.createElement('input'); inp.type='color';
+    inp.value=window.SLIME_PALETTE_OVERRIDE[r]||hslToHex(pal[r]);
+    inp.style.cssText='width:30px;height:26px;border:none;background:none;cursor:pointer;padding:0';
+    inp.oninput=()=>{ window.SLIME_PALETTE_OVERRIDE[r]=inp.value; persistColors(); renderPreview(); };
+    wrap.appendChild(inp); wrap.appendChild(document.createTextNode(r)); box.appendChild(wrap);
+  }
 }
 function redraw(){
   applyLive();
@@ -206,10 +263,12 @@ document.getElementById('reload').onclick=()=>{ const key=partSel.value; delete 
 document.getElementById('apply').onclick=()=>{ applyLive(); localStorage.setItem('slime_part_overrides',JSON.stringify(window.SLIME_PART_OVERRIDES)); localStorage.setItem('slime_part_aspects',JSON.stringify(window.SLIME_PART_ASPECTS)); flash('salvato ✓'); };
 document.getElementById('reset').onclick=()=>{ const key=partSel.value; delete window.SLIME_PART_OVERRIDES[key]; delete window.SLIME_PART_ASPECTS[key]; localStorage.setItem('slime_part_overrides',JSON.stringify(window.SLIME_PART_OVERRIDES)); localStorage.setItem('slime_part_aspects',JSON.stringify(window.SLIME_PART_ASPECTS)); loadPart(); flash('modifica rimossa'); };
 document.getElementById('copy').onclick=async()=>{ try{ await navigator.clipboard.writeText(out.value); flash('copiato ✓'); }catch(_){} };
+document.getElementById('resetPal').onclick=()=>{ window.SLIME_PALETTE_OVERRIDE={}; persistColors(); renderPalette(); renderPreview(); flash('palette originale'); };
 partSel.onchange=loadPart;
 stageSel.onchange=renderPreview;
 function flash(t){ const c=document.getElementById('copied'); c.textContent=t; setTimeout(()=>c.textContent='',1600); }
 
+renderPalette();
 loadPart();
 </script>
 </body>
