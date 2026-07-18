@@ -182,6 +182,24 @@ const REROLL_COST = 200;
 // v0.16 — Gene Splicer: pick ONE visual part and reroll it to a random new
 // value (different from the current one). Cost 500.
 const PARTSWAP_COST = 500;
+// v0.16 — Championship (leagues). Climb through divisions; each has a few
+// opponents you preview (level + type) before fighting. Winning advances you;
+// losing costs nothing (retry). No battle-charge cost.
+const LEAGUES = ['bronze', 'silver', 'gold', 'platinum', 'diamond'];
+const LEAGUE_STEPS = 4;            // opponents per league
+const LEAGUE_WIN_COINS = 30;       // coins per championship win
+const LEAGUE_PROMO_COINS = 100;    // bonus coins on promotion to a new league
+// Deterministic opponent level & seed for a given (league, step).
+function leagueLevel(league, step) { return 3 + league * 8 + step * 2; }
+function leagueSeed(league, step) { return ((league * 100 + step + 1) * 2654435761) >>> 0; }
+// Build the CURRENT opponent snapshot for a pet's championship position.
+function leagueOpponent(pet) {
+  if (!window.SlimeBattle || typeof window.SlimeBattle.makeOpponent !== 'function') return null;
+  const lg = pet.league || 0, st = pet.leagueStep || 0;
+  if (lg >= LEAGUES.length) return null; // already champion
+  return window.SlimeBattle.makeOpponent(leagueLevel(lg, st), leagueSeed(lg, st));
+}
+
 // Each entry: genome field, the pool of valid values, and the i18n label key.
 const PART_CATEGORIES = [
   { field: 'bodyShape', pool: BODY_SHAPES, labelKey: 'part.body' },
@@ -621,6 +639,7 @@ export function showScreen(name) {
   if (name === 'menu') refreshMenu();
   if (name === 'changelog') renderChangelog();
   if (name === 'album') renderAlbum();
+  if (name === 'league') renderLeague();
   if (name === 'shop') refreshShop();
 }
 
@@ -2220,12 +2239,108 @@ function grantBattleResult(won, info) {
     markAchievement();
   }
 
+  // v0.16: championship result — advance on a win; a loss/draw costs nothing.
+  if (state.leaguePending) {
+    state.leaguePending = false;
+    if (won) advanceLeague(pet);
+  }
+
   // A win (XP/level + battleWins) can unlock new moves.
   checkLearning();
 
   save();
   refresh();
   return { leveledUp: leveled, coins };
+}
+
+// v0.16 — advance the pet's championship position after a win.
+function advanceLeague(pet) {
+  if (typeof pet.league !== 'number') pet.league = 0;
+  if (typeof pet.leagueStep !== 'number') pet.leagueStep = 0;
+  if (pet.league >= LEAGUES.length) return; // already champion
+  pet.coins = (pet.coins || 0) + LEAGUE_WIN_COINS;
+  pet.leagueStep += 1;
+  if (pet.leagueStep >= LEAGUE_STEPS) {
+    pet.leagueStep = 0;
+    pet.league += 1;
+    if (pet.league >= LEAGUES.length) {
+      toast(t('league.champion', { name: pet.name }));
+    } else {
+      pet.coins += LEAGUE_PROMO_COINS;
+      toast(t('league.promoted', { name: pet.name, league: t('league.' + LEAGUES[pet.league]) }));
+    }
+  } else {
+    toast(t('league.won', { name: pet.name }));
+  }
+}
+
+// v0.16 — start the current championship challenge (no charge cost).
+function doLeagueFight() {
+  const pet = state.pet;
+  if (!pet) return;
+  if (pet.stage === 'egg') { toast(t('toast.eggFirst')); return; }
+  if (pet.sick) { toast(t('toast.tooSick', { name: pet.name })); return; }
+  if (pet.care.happiness < MIN_HAPPY_TO_ACT) { toast(t('toast.tooSad', { name: pet.name })); return; }
+  if ((pet.league || 0) >= LEAGUES.length) { toast(t('league.alreadyChampion', { name: pet.name })); return; }
+  const opp = leagueOpponent(pet);
+  if (!opp || !window.SlimeBattle || typeof window.SlimeBattle.startVs !== 'function') {
+    toast(t('league.unavailable')); return;
+  }
+  state.leaguePending = true;
+  window.SlimeBattle.startVs(opp);
+}
+
+// v0.16 — render the Championship screen (current league, progress, opponent
+// preview with level + type, and a Fight button).
+const LEAGUE_EMOJI = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏅', diamond: '💎' };
+function renderLeague() {
+  const pet = state.pet;
+  const body = $('league-body');
+  if (!pet || !body) return;
+  const back = $('btn-league-back');
+  if (back) back.textContent = t('menu.back');
+  const lg = pet.league || 0, st = pet.leagueStep || 0;
+  const champion = lg >= LEAGUES.length;
+  const NS = 'http://www.w3.org/2000/svg';
+  body.innerHTML = '';
+
+  const head = document.createElement('div');
+  head.className = 'league-head';
+  if (champion) {
+    head.innerHTML = `<span class="league-badge">🏆</span><div class="league-title">${t('league.championTitle')}</div>`;
+    body.appendChild(head);
+    return;
+  }
+  head.innerHTML = `<span class="league-badge">${LEAGUE_EMOJI[LEAGUES[lg]] || '🏆'}</span>` +
+    `<div class="league-title">${t('league.' + LEAGUES[lg])}</div>` +
+    `<div class="league-progress">${t('league.progress', { cur: st + 1, total: LEAGUE_STEPS })}</div>`;
+  body.appendChild(head);
+
+  const opp = leagueOpponent(pet);
+  if (!opp) { body.appendChild(Object.assign(document.createElement('div'), { className: 'league-msg', textContent: t('league.unavailable') })); return; }
+
+  const card = document.createElement('div');
+  card.className = 'league-opp';
+  const art = document.createElement('div');
+  art.className = 'league-opp-art';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 200 200');
+  renderPet(svg, opp.genome, opp.stage, { mood: 'idle', element: opp.element });
+  art.appendChild(svg);
+  const info = document.createElement('div');
+  info.className = 'league-opp-info';
+  info.innerHTML = `<div class="league-opp-name">${opp.name}</div>` +
+    `<div class="league-opp-sub">${t('battle.rivalSub', { level: opp.level, stage: t('stage.' + opp.stage) })}</div>` +
+    `<div class="league-opp-type">${elementIcon(opp.element)} ${t('element.' + opp.element)}</div>`;
+  card.appendChild(art);
+  card.appendChild(info);
+  body.appendChild(card);
+
+  const fightBtn = document.createElement('button');
+  fightBtn.className = 'big-btn accent';
+  fightBtn.textContent = t('league.fight');
+  fightBtn.onclick = doLeagueFight;
+  body.appendChild(fightBtn);
 }
 
 // ---------------------------------------------------------------------------
@@ -2786,6 +2901,8 @@ export function initGame() {
   bindClick('btn-changelog-back', () => showScreen('menu'));
   bindClick('btn-album', () => showScreen('album'));
   bindClick('btn-album-back', () => showScreen('menu'));
+  bindClick('btn-league', () => showScreen('league'));
+  bindClick('btn-league-back', () => showScreen('menu'));
 
   // v12/v13: pet export / import. Export reveals + copies the code; the import
   // button only REVEALS the paste field + Load button (the Load button imports).

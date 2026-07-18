@@ -1165,4 +1165,20 @@ function openMenu() {
   renderMenu();
 }
 
-window.SlimeBattle = { openMenu };
+// v0.16 — Championship hooks for game.js:
+//  makeOpponent(level, seed) -> a deterministic opponent snapshot (for preview).
+//  startVs(oppSnap) -> run a battle against a PROVIDED opponent (no charge cost;
+//    game.js does its own eligibility checks). Result flows to
+//    window.SlimeGame.grantBattleResult like any AI battle.
+function startVs(oppSnap) {
+  if (!oppSnap) return;
+  const mySnap = getMySnapshot();
+  const seed = (Math.random() * 0xFFFFFFFF) >>> 0;
+  runBattleScreen({ snapA: mySnap, snapB: oppSnap, mySide: 'A', mode: 'ai', engineSeed: seed });
+}
+function makeOpponent(level, seed) {
+  try { return generateWildOpponent(level, seed); } catch (err) {
+    console.error('[battle-ui] makeOpponent failed', err); return null;
+  }
+}
+window.SlimeBattle = { openMenu, startVs, makeOpponent };

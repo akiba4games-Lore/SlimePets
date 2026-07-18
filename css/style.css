@@ -1185,6 +1185,29 @@ body {
 .album-lock { font-size: 40px; opacity: 0.7; }
 .album-label { font-size: 13px; font-weight: 800; color: var(--pink-d); }
 .album-card.locked .album-label { color: var(--ink); opacity: 0.6; }
+
+/* v0.16 — Championship (leagues) */
+.league-wrap { display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px; }
+.league-head { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.league-badge { font-size: 46px; }
+.league-title { font-size: 18px; font-weight: 800; color: var(--pink-d); }
+.league-progress { font-size: 13px; font-weight: 700; color: var(--ink); opacity: 0.8; }
+.league-opp {
+  background: var(--panel);
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.league-opp-art { width: 96px; height: 96px; flex: 0 0 auto; }
+.league-opp-art svg { width: 100%; height: 100%; }
+.league-opp-info { flex: 1; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.league-opp-name { font-size: 16px; font-weight: 800; color: var(--ink); }
+.league-opp-sub { font-size: 13px; font-weight: 600; color: var(--ink); opacity: 0.8; }
+.league-opp-type { font-size: 14px; font-weight: 700; color: var(--pink-d); }
+.league-msg { text-align: center; color: var(--ink); opacity: 0.8; padding: 10px 0; }
 .menu-io { display: flex; flex-direction: column; gap: 8px; }
 .io-code {
   font-family: monospace;
