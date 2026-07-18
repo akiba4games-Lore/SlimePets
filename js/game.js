@@ -2901,8 +2901,10 @@ export function initGame() {
   bindClick('btn-changelog-back', () => showScreen('menu'));
   bindClick('btn-album', () => showScreen('album'));
   bindClick('btn-album-back', () => showScreen('menu'));
-  bindClick('btn-league', () => showScreen('league'));
-  bindClick('btn-league-back', () => showScreen('menu'));
+  bindClick('btn-league-back', () => {
+    if (window.SlimeBattle && typeof window.SlimeBattle.openMenu === 'function') window.SlimeBattle.openMenu();
+    else showScreen('battle');
+  });
 
   // v12/v13: pet export / import. Export reveals + copies the code; the import
   // button only REVEALS the paste field + Load button (the Load button imports).

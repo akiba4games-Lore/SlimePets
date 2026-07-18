@@ -412,8 +412,12 @@ function renderMenu() {
   wildBtn.onclick = startWildBattle;
   const localBtn = el('button', 'bui-btn bui-btn-secondary', t('battle.localShort'));
   localBtn.onclick = openLocalPanel;
+  // v0.16: Championship — a game.js screen; navigate to it via the glue.
+  const leagueBtn = el('button', 'bui-btn bui-btn-secondary', t('menu.league'));
+  leagueBtn.onclick = () => goToScreen('league');
   battleCard.appendChild(wildBtn);
   battleCard.appendChild(localBtn);
+  battleCard.appendChild(leagueBtn);
   wrap.appendChild(battleCard);
 
   // 🎒 Preparazione panel — Cambia Mosse (opens the moves-equip screen).
