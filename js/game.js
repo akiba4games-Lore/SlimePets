@@ -27,6 +27,15 @@ import {
   STAGE_DURATION_MS,
   EGG_HATCH_MS,
   EGG_HATCH_TAPS,
+  BODY_SHAPES,
+  EYE_STYLES,
+  MOUTH_STYLES,
+  EAR_STYLES,
+  HORN_STYLES,
+  NOSE_STYLES,
+  TAIL_STYLES,
+  PATTERN_STYLES,
+  CHEEK_STYLES,
 } from './pet.js';
 import { renderPet } from './render.js';
 import { saveGame, loadGame, clearGame } from './storage.js';
@@ -170,6 +179,21 @@ const DIRTY_DECAY_MULT = 1.6;
 const CURE_COST = 30;
 const STAMINA_POTION_COST = 30;
 const REROLL_COST = 200;
+// v0.16 — Gene Splicer: pick ONE visual part and reroll it to a random new
+// value (different from the current one). Cost 500.
+const PARTSWAP_COST = 500;
+// Each entry: genome field, the pool of valid values, and the i18n label key.
+const PART_CATEGORIES = [
+  { field: 'bodyShape', pool: BODY_SHAPES, labelKey: 'part.body' },
+  { field: 'eyes', pool: EYE_STYLES, labelKey: 'part.eyes' },
+  { field: 'mouth', pool: MOUTH_STYLES, labelKey: 'part.mouth' },
+  { field: 'ears', pool: EAR_STYLES, labelKey: 'part.ears' },
+  { field: 'horn', pool: HORN_STYLES, labelKey: 'part.horn' },
+  { field: 'nose', pool: NOSE_STYLES, labelKey: 'part.nose' },
+  { field: 'cheeks', pool: CHEEK_STYLES, labelKey: 'part.cheeks' },
+  { field: 'tail', pool: TAIL_STYLES, labelKey: 'part.tail' },
+  { field: 'pattern', pool: PATTERN_STYLES, labelKey: 'part.pattern' },
+];
 
 // v7 — Syringe (cure illness). 50 coins, +10 happiness.
 const SYRINGE_COST = 50;
@@ -410,7 +434,7 @@ function scheduleIdleAnim() {
 
 // Any open sheet / popup / panel / overlay that should suppress idle anims.
 function anyOverlayOpen() {
-  const ids = ['food-sheet', 'lang-sheet', 'reroll-sheet', 'confirm-popup', 'rps-panel', 'info-panel', 'train-anim-overlay'];
+  const ids = ['food-sheet', 'lang-sheet', 'reroll-sheet', 'partswap-sheet', 'confirm-popup', 'rps-panel', 'info-panel', 'train-anim-overlay'];
   for (const id of ids) {
     const el = $(id);
     if (el && el.classList.contains('open')) return true;
@@ -2324,6 +2348,7 @@ function shopItems() {
     { id: 'stamina', emoji: '⚡', cost: STAMINA_POTION_COST, nameKey: 'shop.staminaPotion', descKey: 'shop.staminaPotionDesc', buy: doBuyStamina },
     { id: 'syringe', emoji: '💉', cost: SYRINGE_COST, nameKey: 'shop.syringe', descKey: 'shop.syringeDesc', buy: doBuySyringe },
     { id: 'reroll', emoji: '🎲', cost: REROLL_COST, nameKey: 'shop.reroll', descKey: 'shop.rerollDesc', pick: openRerollPicker },
+    { id: 'partswap', emoji: '🧬', cost: PARTSWAP_COST, nameKey: 'shop.partswap', descKey: 'shop.partswapDesc', pick: openPartSwapPicker },
   ];
 }
 
@@ -2486,6 +2511,45 @@ function doReroll(slotId) {
   toast(t('shop.rerolled', { name: pet.name, icon: elementIcon(ab.element), move: ab.name }));
   refreshShop();
   refresh(); // moveset in the info panel updates immediately
+  save();
+}
+
+// v0.16 — Gene Splicer (🧬): pick a body part; it rerolls to a random NEW
+// value (different from the current). Costs 500 coins.
+function openPartSwapPicker() {
+  const pet = state.pet;
+  if (!pet) return;
+  if ((pet.coins || 0) < PARTSWAP_COST) { toast(t('shop.notEnough')); return; }
+  const grid = $('partswap-grid');
+  if (grid) {
+    grid.innerHTML = PART_CATEGORIES
+      .map((c) => `<button class="food-item" data-part="${c.field}"><span class="f-ico">🧬</span><span class="f-name">${t(c.labelKey)}</span><span class="f-price">${String(pet.genome[c.field])}</span></button>`)
+      .join('');
+    grid.querySelectorAll('[data-part]').forEach((btn) => {
+      btn.addEventListener('click', () => doPartSwap(btn.dataset.part));
+    });
+  }
+  openSheet('partswap-sheet');
+}
+
+function doPartSwap(field) {
+  const pet = state.pet;
+  if (!pet) return;
+  if ((pet.coins || 0) < PARTSWAP_COST) { toast(t('shop.notEnough')); closeSheet('partswap-sheet'); return; }
+  const cat = PART_CATEGORIES.find((c) => c.field === field);
+  if (!cat) { closeSheet('partswap-sheet'); return; }
+  const current = pet.genome[field];
+  const options = cat.pool.filter((v) => v !== current);
+  if (options.length === 0) { closeSheet('partswap-sheet'); return; }
+  const next = options[Math.floor(Math.random() * options.length)];
+  pet.genome[field] = next;
+  pet.coins -= PARTSWAP_COST;
+  closeSheet('partswap-sheet');
+  reaction('🧬');
+  toast(t('shop.partswapped', { name: pet.name, part: t(cat.labelKey) }));
+  renderCurrentPet(); // the change is visible immediately
+  refreshShop();
+  refresh();
   save();
 }
 
@@ -2662,6 +2726,8 @@ export function initGame() {
   bindClick('btn-notify', requestNotifications);
   bindClick('reroll-close', () => closeSheet('reroll-sheet'));
   bindSheetBackdrop('reroll-sheet');
+  bindClick('partswap-close', () => closeSheet('partswap-sheet'));
+  bindSheetBackdrop('partswap-sheet');
   bindClick('btn-rename', () => {
     const nameInput = $('menu-name');
     if (state.pet && nameInput && nameInput.value.trim()) {
