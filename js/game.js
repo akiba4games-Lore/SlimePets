@@ -2623,6 +2623,7 @@ function doBuySyringe() {
   pet.illTimer = 0;
   pet.sickDeadline = 0; // v14A (§5): stop the death timer. Lost stats do NOT return.
   pet.care.happiness = clamp(pet.care.happiness + CURE_HAPPY, 0, 100);
+  pet.care.hunger = clamp(pet.care.hunger + 10, 0, 100); // v0.16: also feeds a little
   reaction('💉');
   toast(t('shop.cured', { name: pet.name }));
   refreshShop();
