@@ -620,6 +620,7 @@ export function showScreen(name) {
   if (name === 'moves') refreshMoves();
   if (name === 'menu') refreshMenu();
   if (name === 'changelog') renderChangelog();
+  if (name === 'album') renderAlbum();
   if (name === 'shop') refreshShop();
 }
 
@@ -2266,6 +2267,41 @@ function renderChangelog() {
   }
 }
 
+// v0.16 — Album: every growth stage of the CURRENT pet. Stages the pet has
+// reached are rendered from its genome; not-yet-reached ones show a lock.
+function renderAlbum() {
+  const pet = state.pet;
+  const grid = $('album-grid');
+  if (!pet || !grid) return;
+  const back = $('btn-album-back');
+  if (back) back.textContent = t('menu.back');
+  const curIdx = STAGE_ORDER.indexOf(pet.stage);
+  const chubby = clamp(((pet.weight || 30) - 30) / 70, 0, 1);
+  const NS = 'http://www.w3.org/2000/svg';
+  grid.innerHTML = '';
+  STAGE_ORDER.forEach((stage, i) => {
+    const unlocked = i <= curIdx;
+    const card = document.createElement('div');
+    card.className = 'album-card' + (unlocked ? '' : ' locked');
+    const art = document.createElement('div');
+    art.className = 'album-art';
+    if (unlocked) {
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('viewBox', '0 0 200 200');
+      renderPet(svg, pet.genome, stage, { mood: 'idle', chubby, element: pet.genome.element });
+      art.appendChild(svg);
+    } else {
+      art.innerHTML = '<div class="album-lock">🔒</div>';
+    }
+    const label = document.createElement('div');
+    label.className = 'album-label';
+    label.textContent = t('stage.' + stage);
+    card.appendChild(art);
+    card.appendChild(label);
+    grid.appendChild(card);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // v12 — Pet export / import (Menu). Export reveals a code + copies it to the
 // clipboard; import validates a pasted code and (after an in-page confirm)
@@ -2748,6 +2784,8 @@ export function initGame() {
   // v12: menu changelog ("📋 What's New") open/close.
   bindClick('btn-changelog', () => showScreen('changelog'));
   bindClick('btn-changelog-back', () => showScreen('menu'));
+  bindClick('btn-album', () => showScreen('album'));
+  bindClick('btn-album-back', () => showScreen('menu'));
 
   // v12/v13: pet export / import. Export reveals + copies the code; the import
   // button only REVEALS the paste field + Load button (the Load button imports).
