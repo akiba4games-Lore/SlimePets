@@ -2497,7 +2497,7 @@ function shopItems() {
   return [
     { id: 'cure', emoji: '❤️', cost: CURE_COST, nameKey: 'shop.curePotion', descKey: 'shop.curePotionDesc', buy: doBuyCure },
     { id: 'stamina', emoji: '⚡', cost: STAMINA_POTION_COST, nameKey: 'shop.staminaPotion', descKey: 'shop.staminaPotionDesc', buy: doBuyStamina },
-    { id: 'syringe', emoji: '💉', cost: SYRINGE_COST, nameKey: 'shop.syringe', descKey: 'shop.syringeDesc', buy: doBuySyringe },
+    { id: 'syringe', emoji: '💊', cost: SYRINGE_COST, nameKey: 'shop.syringe', descKey: 'shop.syringeDesc', buy: doBuySyringe },
     { id: 'reroll', emoji: '🎲', cost: REROLL_COST, nameKey: 'shop.reroll', descKey: 'shop.rerollDesc', pick: openRerollPicker },
     { id: 'partswap', emoji: '🧬', cost: PARTSWAP_COST, nameKey: 'shop.partswap', descKey: 'shop.partswapDesc', pick: openPartSwapPicker },
   ];
@@ -2624,7 +2624,7 @@ function doBuySyringe() {
   pet.sickDeadline = 0; // v14A (§5): stop the death timer. Lost stats do NOT return.
   pet.care.happiness = clamp(pet.care.happiness + CURE_HAPPY, 0, 100);
   pet.care.hunger = clamp(pet.care.hunger + 10, 0, 100); // v0.16: also feeds a little
-  reaction('💉');
+  reaction('💊');
   toast(t('shop.cured', { name: pet.name }));
   refreshShop();
   refresh();

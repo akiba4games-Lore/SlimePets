@@ -172,8 +172,8 @@ const en = {
   'shop.staminaFull': '{name} is already full of energy!',
   'shop.noRerollMoves': '{name} has no moves to reroll yet.',
   'shop.rerolled': '{name} rerolled into {icon} {move}! 🎲',
-  'shop.syringe': 'Syringe',
-  'shop.syringeDesc': 'Cures illness',
+  'shop.syringe': 'Medicine',
+  'shop.syringeDesc': 'Cures illness, +10 hunger & happiness',
   'shop.cured': '{name} feels better! 💉✨',
   'shop.notSick': '{name} isn\'t sick right now.',
   // v14A (§2) — daily free coins
@@ -579,8 +579,8 @@ const it = {
   'shop.staminaFull': '{name} ha già tutta l\'energia!',
   'shop.noRerollMoves': '{name} non ha ancora mosse da rigenerare.',
   'shop.rerolled': '{name} ha rigenerato {icon} {move}! 🎲',
-  'shop.syringe': 'Siringa',
-  'shop.syringeDesc': 'Cura la malattia',
+  'shop.syringe': 'Medicina',
+  'shop.syringeDesc': 'Cura la malattia, +10 fame e felicità',
   'shop.cured': '{name} si sente meglio! 💉✨',
   'shop.notSick': '{name} non è malato al momento.',
   // v14A (§2) — monete giornaliere gratuite
@@ -980,8 +980,8 @@ const ja = {
   'shop.staminaFull': '{name} は もう スタミナ まんタン！',
   'shop.noRerollMoves': '{name} には まだ ふりなおせる わざが ないよ。',
   'shop.rerolled': '{name} は {icon} {move} に かわった！🎲',
-  'shop.syringe': 'ちゅうしゃ',
-  'shop.syringeDesc': 'びょうきを なおす',
+  'shop.syringe': 'くすり',
+  'shop.syringeDesc': 'びょうきを なおす、まんぷく＋10・きげん＋10',
   'shop.cured': '{name} は げんきに なった！💉✨',
   'shop.notSick': '{name} は いま びょうきじゃ ないよ。',
   // v14A (§2) — まいにち むりょうコイン
